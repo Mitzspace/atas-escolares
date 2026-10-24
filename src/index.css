@@ -62,3 +62,14 @@
   .step-done .step-number { background: #e2e8f0; border-color: #64748b; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 }
+
+@layer components {
+  .type-card { @apply flex min-h-36 w-full items-start gap-4 rounded-2xl border border-rule bg-white p-5 text-left shadow-sm transition-colors hover:border-blue-800 hover:bg-blue-50/50 active:bg-blue-50 sm:p-6; }
+  .type-icon { @apply flex size-14 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-900; }
+  .person-card { @apply space-y-4 rounded-xl border border-rule bg-slate-50 p-4; }
+  .recorder-clock { @apply rounded-2xl border px-3 py-6 text-center; }
+  .recorder-time { font-size: clamp(2.5rem, 11vw, 4rem); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.04em; line-height: 1.2; color: var(--color-ink); }
+  .recording-dot { display: inline-block; width: 12px; height: 12px; margin-right: 8px; border-radius: 50%; background: #b91c1c; animation: recording-pulse 1.6s ease-in-out infinite; }
+  @keyframes recording-pulse { 50% { opacity: .45; box-shadow: 0 0 0 5px #b91c1c18; } }
+  @media (max-width: 400px) { .type-card { gap: .75rem; padding: 1rem; } .type-icon { width: 44px; height: 48px; } }
+}

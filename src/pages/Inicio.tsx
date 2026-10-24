@@ -50,8 +50,9 @@ export default function Inicio() {
             <li key={a.id} className="card">
               <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
                 <div>
-                  <p className="font-document text-xl font-semibold text-ink">Ata nº {a.meta.numero}/{a.meta.ano} – {TIPOS_ATA[a.meta.tipo ?? 'pedagogica']?.nome ?? 'Reunião pedagógica'}</p>
-                  <p className="text-sm text-slate-600">{a.meta.data.split('-').reverse().join('/')} · {a.meta.escola}</p>
+                  <p className="font-document text-xl font-semibold text-ink">Ata nº {a.meta.numero}/{a.meta.ano}</p>
+                  <p className="mt-2 inline-flex rounded-lg border border-blue-100 bg-blue-50 px-3 py-1 font-medium text-blue-900">{TIPOS_ATA[a.meta.tipo ?? 'pedagogica']?.nome ?? 'Reunião pedagógica'}</p>
+                  <p className="mt-2 text-base text-slate-600">{a.meta.data.split('-').reverse().join('/')} · {a.meta.escola}</p>
                 </div>
                 <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${COR[a.status]}`}>{ROTULO[a.status]}</span>
               </div>

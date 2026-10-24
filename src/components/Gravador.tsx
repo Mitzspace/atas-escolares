@@ -248,13 +248,13 @@ export default function Gravador({ arquivo, onChange }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2" role="group" aria-label="Como enviar o áudio">
-        {([['gravar', '🎙 Gravar agora'], ['arquivo', '📁 Enviar arquivo']] as const).map(([m, rot]) => (
+      <div className="grid gap-2 rounded-2xl border border-rule bg-slate-50 p-2 sm:grid-cols-2" role="group" aria-label="Como enviar o áudio">
+        {([['gravar', 'Gravar agora'], ['arquivo', 'Enviar arquivo']] as const).map(([m, rot]) => (
           <button
             key={m} type="button" aria-pressed={modo === m} disabled={emAndamento}
             onClick={() => setModo(m)}
             className={modo === m ? 'btn-primary' : 'btn-secondary'}
-          >{rot}</button>
+          ><svg aria-hidden="true" className="shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{m === 'gravar' ? <><rect x="9" y="2" width="6" height="13" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" /></> : <path d="M3 6h7l2 3h9v12H3zM3 6V3h7l2 3h9v3" />}</svg>{rot}</button>
         ))}
       </div>
 
@@ -278,24 +278,24 @@ export default function Gravador({ arquivo, onChange }: Props) {
       {modo === 'gravar' && (
         <div className="space-y-4">
           {recuperaveis.length > 0 && fase === 'ocioso' && recuperaveis.map(s => (
-            <div key={s.id} className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900" role="status">
+            <div key={s.id} className="rounded-2xl border border-amber-300 border-l-4 bg-amber-50 p-4 text-amber-900" role="status">
               <p className="font-semibold">Encontramos uma gravação interrompida</p>
               <p className="text-sm">Iniciada em {new Date(s.iniciadaEm).toLocaleString('pt-BR')}.</p>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div className="mt-4 grid gap-3">
                 <button type="button" className="btn-primary" onClick={() => usarRecuperada(s)}>Recuperar gravação interrompida ({formatarTempo(s.duracaoMs)})</button>
-                <button type="button" className="btn-secondary" onClick={() => descartarRecuperada(s)}>Descartar</button>
+                <button type="button" className="btn-danger" onClick={() => descartarRecuperada(s)}>Descartar</button>
               </div>
             </div>
           ))}
 
           {fase !== 'pronto' && (
-            <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700">{AVISO_TELA}</p>
+            <p className="rounded-xl border border-rule bg-slate-50 p-4 text-base text-slate-700">{AVISO_TELA}</p>
           )}
 
-          <div className="text-center">
-            <div className="text-5xl font-semibold tabular-nums" aria-live="off" aria-label={`Tempo gravado ${formatarTempo(ms)}`}>{formatarTempo(ms)}</div>
+          <div className={`recorder-clock ${fase === 'gravando' ? 'border-red-200 bg-red-50/50' : 'border-rule bg-slate-50'}`}>
+            <div className="recorder-time" aria-live="off" aria-label={`Tempo gravado ${formatarTempo(ms)}`}>{formatarTempo(ms)}</div>
             <p className="mt-1 text-sm text-slate-600" aria-live="polite">
-              {fase === 'gravando' && <><span className="mr-1 text-red-600">●</span>Gravando</>}
+              {fase === 'gravando' && <><span className="recording-dot" aria-hidden="true" /><span className="font-semibold text-red-800">Gravando</span></>}
               {fase === 'pausado' && 'Pausado'}
               {fase === 'pronto' && 'Gravação pronta'}
               {fase === 'ocioso' && 'Pronto para gravar'}
@@ -304,26 +304,26 @@ export default function Gravador({ arquivo, onChange }: Props) {
 
           {emAndamento && (
             <div>
-              <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200" role="meter" aria-label="Nível do microfone" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(nivel * 100)}>
-                <div className="h-full bg-green-600 transition-[width] duration-75" style={{ width: `${Math.max(2, nivel * 100)}%` }} />
+              <div className="h-4 w-full overflow-hidden rounded-full border border-slate-300 bg-slate-100" role="meter" aria-label="Nível do microfone" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(nivel * 100)}>
+                <div className="h-full bg-emerald-700 transition-[width] duration-75" style={{ width: `${Math.max(2, nivel * 100)}%` }} />
               </div>
               <p className="mt-1 text-xs text-slate-600">{fase === 'pausado' ? 'Gravação pausada.' : nivel < 0.03 ? 'Não estou ouvindo nada. Fale ou aproxime o aparelho.' : 'O microfone está captando.'}</p>
             </div>
           )}
 
-          {fase === 'ocioso' && <button type="button" className="btn-primary w-full" onClick={iniciar}>● Gravar</button>}
+          {fase === 'ocioso' && <button type="button" className="btn-primary min-h-16 w-full" onClick={iniciar}>● Gravar</button>}
           {emAndamento && (
             <div className="grid grid-cols-2 gap-2">
               {fase === 'gravando'
-                ? <button type="button" className="btn-secondary" onClick={pausar}>⏸ Pausar</button>
-                : <button type="button" className="btn-secondary" onClick={retomar}>▶ Retomar</button>}
-              <button type="button" className="btn-danger" onClick={pararGravacao}>■ Parar</button>
+                ? <button type="button" className="btn-secondary min-h-16" onClick={pausar}>⏸ Pausar</button>
+                : <button type="button" className="btn-primary min-h-16" onClick={retomar}>▶ Retomar</button>}
+              <button type="button" className="btn-danger min-h-16" onClick={pararGravacao}>■ Parar</button>
             </div>
           )}
 
           {fase === 'pronto' && url && (
-            <div className="space-y-3">
-              <audio controls src={url} className="w-full" />
+            <div className="space-y-4 rounded-2xl border border-emerald-300 bg-emerald-50/50 p-4">
+              <audio controls src={url} aria-label="Ouvir gravação da reunião" className="min-h-12 w-full" />
               <p className="text-sm text-slate-600">Ouça para conferir. {arquivo && <>Arquivo: <b>{arquivo.name}</b> ({(arquivo.size / 1024 / 1024).toFixed(1)} MB). </>}Ela será usada ao tocar em “Transcrever o áudio”.</p>
               <button type="button" className="btn-secondary w-full" onClick={descartar}>Descartar e gravar de novo</button>
             </div>
@@ -331,8 +331,8 @@ export default function Gravador({ arquivo, onChange }: Props) {
         </div>
       )}
 
-      {aviso && <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{aviso}</div>}
-      {erro && <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">{erro}</div>}
+      {aviso && <div role="status" className="rounded-xl border border-amber-300 border-l-4 bg-amber-50 p-4 text-base text-amber-900">{aviso}</div>}
+      {erro && <div role="alert" className="rounded-xl border border-red-300 border-l-4 bg-red-50 p-4 text-base text-red-800">{erro}</div>}
     </div>
   )
 }

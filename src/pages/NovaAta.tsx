@@ -145,9 +145,13 @@ export default function NovaAta() {
         <ul className="space-y-3">
           {TIPOS.map(t => (
             <li key={t}>
-              <button type="button" onClick={() => escolherTipo(t)} className="card w-full min-h-24 text-left active:bg-slate-50">
-                <span className="block font-document text-xl font-semibold text-ink">{TIPOS_ATA[t].nome}</span>
-                <span className="mt-1 block text-slate-600">{TIPOS_ATA[t].descricao}</span>
+              <button type="button" onClick={() => escolherTipo(t)} className="type-card group">
+                <span className="type-icon" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                  {t === 'pedagogica' ? <><path d="M4 6h9l3 3 3-3h9v21h-9l-3 2-3-2H4zM16 9v20M8 12h4M8 17h4M20 12h4M20 17h4" /></> : t === 'pais' ? <><circle cx="11" cy="9" r="4" /><circle cx="23" cy="12" r="3" /><path d="M3 27v-4a8 8 0 0 1 16 0v4M21 19a6 6 0 0 1 8 6v2" /></> : <><path d="M4 5h24v16H16l-7 6v-6H4zM10 11h12M10 16h8" /></>}
+                </svg></span>
+                <span className="min-w-0 flex-1"><span className="block font-document text-xl font-semibold text-ink">{TIPOS_ATA[t].nome}</span>
+                <span className="mt-2 block text-slate-600">{TIPOS_ATA[t].descricao}</span></span>
+                <span className="self-center text-2xl text-blue-900" aria-hidden="true">›</span>
               </button>
             </li>
           ))}
@@ -242,7 +246,7 @@ export default function NovaAta() {
                 <div><label className="label" htmlFor="aluno-nome">Nome do aluno</label><input id="aluno-nome" className="field" autoComplete="off" value={orientadoAluno.nome} onChange={e => setOrientadoAluno({ ...orientadoAluno, nome: e.target.value })} /></div>
                 <div><label className="label" htmlFor="aluno-turma">Turma</label><input id="aluno-turma" className="field" autoComplete="off" value={orientadoAluno.turma} onChange={e => setOrientadoAluno({ ...orientadoAluno, turma: e.target.value })} placeholder="5º ano B" /></div>
               </div>
-              <div className="space-y-3 rounded-xl border border-rule p-4">
+              <div className="person-card">
                 <p className="font-semibold">Responsável presente (opcional)</p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div><label className="label" htmlFor="acomp-nome">Nome</label><input id="acomp-nome" className="field" autoComplete="off" value={acompanhante.nome} onChange={e => setAcompanhante({ ...acompanhante, nome: e.target.value })} /></div>
@@ -285,7 +289,7 @@ export default function NovaAta() {
           <h2 className="font-semibold">Alunos (se participaram)</h2>
           <p className="text-sm text-slate-600">Alunos são digitados a cada ata e não entram no cadastro.</p>
           {alunos.map((a, i) => (
-            <div key={i} className="grid gap-3 rounded-xl border border-rule p-4 sm:grid-cols-[1fr_10rem_auto]">
+            <div key={i} className="grid gap-3 rounded-xl border border-rule bg-slate-50 p-4 sm:grid-cols-[1fr_10rem_auto]">
               <input className="field" autoFocus={a.foco} autoComplete="off" value={a.nome} onChange={e => upAluno(i, { nome: e.target.value })} placeholder="Nome do aluno" aria-label="Nome do aluno" />
               <input className="field" autoComplete="off" value={a.turma} onChange={e => upAluno(i, { turma: e.target.value })} placeholder="Turma" aria-label="Turma" />
               <button type="button" className="btn-danger" onClick={() => setAlunos(as => as.filter((_, j) => j !== i))} aria-label="Remover aluno">Remover</button>
@@ -300,16 +304,25 @@ export default function NovaAta() {
           <h2 className="font-semibold">Pais e responsáveis</h2>
           <p className="text-sm text-slate-600">Digite quem compareceu. Eles não entram no cadastro de funcionários.</p>
           {responsaveis.map((r, i) => (
-            <div key={i} className="space-y-3 rounded-xl border border-rule p-4">
+            <div key={i} className="person-card">
+              <h3 className="font-semibold text-ink">Responsável {i + 1}</h3>
               <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
+                <label className="block min-w-0"><span className="label">Nome do responsável</span>
                 <input className="field" autoFocus={r.foco} autoComplete="off" value={r.nome} onChange={e => upResp(i, { nome: e.target.value })} placeholder="Nome do responsável" aria-label="Nome do responsável" />
+                </label>
+                <label className="block min-w-0"><span className="label">Parentesco</span>
                 <select className="field" value={r.parentesco} onChange={e => upResp(i, { parentesco: e.target.value as Parentesco })} aria-label="Parentesco">
                   {PARENTESCOS.map(x => <option key={x}>{x}</option>)}
                 </select>
+                </label>
               </div>
               <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
+                <label className="block min-w-0"><span className="label">Nome do aluno</span>
                 <input className="field" autoComplete="off" value={r.aluno} onChange={e => upResp(i, { aluno: e.target.value })} placeholder="Nome do aluno" aria-label="Nome do aluno" />
+                </label>
+                <label className="block min-w-0"><span className="label">Turma</span>
                 <input className="field" autoComplete="off" value={r.turma} onChange={e => upResp(i, { turma: e.target.value })} placeholder="Turma" aria-label="Turma" />
+                </label>
               </div>
               <button type="button" className="btn-danger w-full" onClick={() => setResponsaveis(rs => rs.filter((_, j) => j !== i))}>Remover responsável</button>
             </div>
