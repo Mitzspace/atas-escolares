@@ -46,12 +46,18 @@ export type MeetingMetadata = {
   secretario: Pessoa;
   /** Em 'orientacao', presidente = quem orienta e a pauta = assuntos/motivo da orientação. */
   participantes: Participante[];
-  /** Só em 'orientacao': o funcionário (categoria 'funcionario') ou o aluno (categoria 'aluno', vinculo = turma) orientado. O responsável que o acompanha vai em `participantes` com categoria 'responsavel'. */
+  /** Só em 'orientacao': quem recebe a orientação (um ou vários, mistos): funcionário (categoria 'funcionario') ou aluno (categoria 'aluno', vinculo = turma). O responsável que acompanha um aluno vai em `participantes` com categoria 'responsavel' e vinculo 'aluno Fulano, 5º ano B'. Use sempre `listarOrientados(meta)`. */
+  orientados?: Participante[];
+  /** Só atas antigas (um único orientado). Novo código usa `orientados`. */
   orientado?: Participante;
   pauta: string[];
   anonimizarAlunos: boolean;
   glossario?: string[];
 };
+
+/** Quem recebe a orientação: `orientados`, ou o `orientado` das atas antigas. */
+export const listarOrientados = (meta: Pick<MeetingMetadata, 'orientados' | 'orientado'>): Participante[] =>
+  meta.orientados ?? (meta.orientado ? [meta.orientado] : []);
 
 export type TranscriptSegment = {
   speaker: string;
@@ -76,6 +82,7 @@ export type AtaExtraida = {
    * - manifestacoes: 'pais' = dúvidas e demandas das famílias; 'orientacao' = manifestações do orientado e de quem o acompanha.
    * - orientacoes: só 'orientacao' = orientações dadas.
    * - cienciaOrientado: só 'orientacao' = true somente se a transcrição mostra que o orientado tomou ciência; senão fica pendente.
+   *   Com vários orientados vale para todos: só é true se TODOS tomaram ciência.
    */
   manifestacoes?: string[];
   orientacoes?: string[];

@@ -11,7 +11,7 @@ export type {
   AtaExtraida,
   AtaRenderizada,
 } from './types';
-export { TIPOS_ATA } from './types';
+export { TIPOS_ATA, listarOrientados } from './types';
 export { buildTranscriptionPrompt, buildAtaPrompt } from './prompts';
 export { transcriptResponseSchema, ataResponseSchema } from './schemas';
 export { renderAta, usaListaAnexa, LIMITE_RESPONSAVEIS_NO_TEXTO } from './render';
