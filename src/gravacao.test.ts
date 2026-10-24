@@ -1,3 +1,4 @@
+// @vitest-environment node
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -87,10 +88,10 @@ describe('recuperação de gravação interrompida', () => {
     const lista = await gravacoesRecuperaveis()
     expect(lista).toHaveLength(1)
     expect(lista[0].duracaoMs).toBe(15_000)
-    // (o jsdom não monta File a partir de Blobs clonados pelo fake-indexeddb, então confere a ordem nos pedaços)
     const textos = await Promise.all((await pedacosDaSessao('s1')).map(b => b.text()))
     expect(textos.join('')).toBe('ABC')
     const arq = await recuperarGravacao(lista[0])
+    expect(await arq.text()).toBe('ABC')
     expect(arq.name).toMatch(/^gravacao-\d{8}-\d{4}\.webm$/)
     expect(arq.type).toBe('audio/webm')
     expect(await gravacoesRecuperaveis('s1')).toHaveLength(0) // a sessão atual é ignorada
