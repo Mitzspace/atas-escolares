@@ -24,9 +24,6 @@ const TAMANHO_MAX_MB = 200
 export default function NovaAta() {
   const nav = useNavigate()
   const [cfg, setCfg] = useState<Settings | null>(null)
-  const [escola, setEscola] = useState('')
-  const [rede, setRede] = useState('')
-  const [municipioUf, setMunicipioUf] = useState('')
   const [tipo, setTipo] = useState<TipoAta | null>(null)
   const [ordinaria, setOrdinaria] = useState(true)
   const [numero, setNumero] = useState(1)
@@ -55,7 +52,7 @@ export default function NovaAta() {
   useEffect(() => {
     getSettings().then(async s => {
       setCfg(s)
-      setEscola(s.escola); setRede(s.rede); setMunicipioUf(s.municipioUf); setLocal(s.local)
+      setLocal(s.local)
       setGlossario(s.glossario)
       setParts(s.pessoas.map(p => ({ ...p, presente: true })))
       setNumero(await proximoNumero(new Date().getFullYear()))
@@ -80,7 +77,7 @@ export default function NovaAta() {
     if (!audio) return setErro('Grave ou envie o áudio da reunião.')
     try { mimeDoAudio(audio) } catch (x) { return setErro((x as Error).message) }
     if (audio.size > TAMANHO_MAX_MB * 1024 * 1024) return setErro(`O arquivo tem mais de ${TAMANHO_MAX_MB} MB. Envie um áudio menor (ou em mp3/m4a).`)
-    if (!escola.trim()) return setErro('Informe o nome da escola.')
+    if (!cfg?.escola.trim()) return setErro('Cadastre o nome da escola em Configurações antes de criar a ata.')
     const quemLavrou = mesmaPessoa ? presidente : secretario
     if (!presidente.nome.trim() || !quemLavrou.nome.trim()) return setErro(tipo === 'orientacao'
       ? 'Informe quem orienta e quem lavrou a ata.'
@@ -112,7 +109,7 @@ export default function NovaAta() {
       }
     }
     const meta: MeetingMetadata = {
-      escola: escola.trim(), rede: rede.trim(), municipioUf: municipioUf.trim(), tipo: tipo!, ordinaria,
+      escola: cfg.escola.trim(), rede: cfg.rede.trim(), municipioUf: cfg.municipioUf.trim(), tipo: tipo!, ordinaria,
       numero, ano: Number(data.slice(0, 4)), data, horaInicio, horaFim: horaFim || undefined, local: local.trim(),
       presidente, secretario: quemLavrou,
       participantes: [...funcionarios, ...extras],
@@ -174,6 +171,11 @@ export default function NovaAta() {
           Falta a chave do Gemini. <Link to="/config" className="font-semibold underline">Colar em Configurações</Link>.
         </div>
       )}
+      {!cfg.escola.trim() && (
+        <div className="card border-amber-300 bg-amber-50 text-amber-900">
+          Falta o nome da escola. <Link to="/config" className="font-semibold underline">Preencher em Configurações</Link>.
+        </div>
+      )}
 
       <section className="card space-y-5">
         <h2 className="font-semibold">Áudio da reunião</h2>
@@ -182,11 +184,6 @@ export default function NovaAta() {
 
       <section className="card space-y-5">
         <h2 className="font-semibold">Dados da reunião</h2>
-        <div><label className="label" htmlFor="escola">Escola</label><input id="escola" className="field" value={escola} onChange={e => setEscola(e.target.value)} /></div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div><label className="label" htmlFor="rede">Rede</label><input id="rede" className="field" value={rede} onChange={e => setRede(e.target.value)} placeholder="Rede Municipal" /></div>
-          <div><label className="label" htmlFor="municipioUf">Município/UF</label><input id="municipioUf" className="field" value={municipioUf} onChange={e => setMunicipioUf(e.target.value)} placeholder="Cidade/SP" /></div>
-        </div>
         <div className="grid grid-cols-3 gap-3">
           <div><label className="label" htmlFor="numero">Ata nº</label><input id="numero" className="field" type="number" min={1} value={numero} onChange={e => setNumero(Number(e.target.value))} /></div>
           <div className="col-span-2"><label className="label" htmlFor="data">Data</label><input id="data" className="field" type="date" value={data} onChange={e => setData(e.target.value)} /></div>
