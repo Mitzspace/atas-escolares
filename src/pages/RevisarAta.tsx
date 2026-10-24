@@ -121,9 +121,9 @@ export default function RevisarAta() {
           ))}
           {listarOrientados(atual.meta).map((o, i) => (
             <li key={`orientado${i}`}>
-              <label className="flex min-h-12 items-center gap-3 rounded-xl border border-rule bg-slate-50 p-4">
+              <label className={`flex min-h-12 items-center gap-3 rounded-xl border border-l-4 p-4 ${o.categoria === 'aluno' ? 'border-teal-200 border-l-teal-700 bg-teal-50/40' : 'border-blue-200 border-l-blue-900 bg-blue-50/40'}`}>
                 <input type="checkbox" className="size-6 shrink-0 accent-blue-900" checked disabled />
-                <span className="min-w-0 break-words"><b className="block text-ink">{o.nome}</b><span className="mt-1 block text-slate-600">{rotuloDoParticipante(o)}</span><span className="block text-slate-600">(recebeu a orientação)</span></span>
+                <span className="min-w-0 break-words"><span className={`person-badge mb-2 ${o.categoria === 'aluno' ? 'bg-teal-100 text-teal-900' : 'bg-blue-100 text-blue-900'}`}>{o.categoria === 'aluno' ? 'Aluno' : 'Funcionário'}</span><b className="block text-ink">{o.nome}</b><span className="mt-1 block text-slate-600">{rotuloDoParticipante(o)}</span><span className="block text-slate-600">(recebeu a orientação)</span></span>
               </label>
             </li>
           ))}

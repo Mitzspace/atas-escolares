@@ -73,3 +73,14 @@
   @keyframes recording-pulse { 50% { opacity: .45; box-shadow: 0 0 0 5px #b91c1c18; } }
   @media (max-width: 400px) { .type-card { gap: .75rem; padding: 1rem; } .type-icon { width: 44px; height: 48px; } }
 }
+
+@layer components {
+  .subject-chip { @apply inline-flex min-h-12 max-w-full items-center gap-3 rounded-2xl border border-slate-400 bg-white px-4 py-3 text-left text-base font-medium leading-relaxed text-slate-800 transition-colors hover:border-blue-800 hover:bg-blue-50; }
+  .subject-chip[aria-pressed='true'] { @apply border-blue-900 bg-blue-900 text-white hover:bg-blue-950; }
+  .chip-mark { @apply flex size-6 shrink-0 items-center justify-center rounded-full border border-current text-base; }
+  .person-badge { @apply inline-flex items-center gap-2 rounded-lg px-3 py-2 text-base font-semibold; }
+  .subject-group { @apply overflow-hidden rounded-xl border border-rule bg-white; }
+  .subject-group[open] { @apply border-blue-300; }
+  .subject-summary { @apply flex min-h-16 cursor-pointer list-none items-center gap-3 bg-slate-50 p-4 text-base font-semibold text-ink hover:bg-blue-50; }
+  .subject-summary::-webkit-details-marker { display: none; }
+}

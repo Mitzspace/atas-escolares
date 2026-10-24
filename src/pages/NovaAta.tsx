@@ -225,9 +225,9 @@ export default function NovaAta() {
           <h2 className="font-semibold">Quem recebe a orientação</h2>
           <p className="text-sm text-slate-600">Pode ser mais de uma pessoa, funcionários e alunos juntos. Todos assinam.</p>
           {orientados.map((o, n) => (
-            <div key={o.id} className="person-card space-y-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-semibold">{n + 1}. {o.tipo === 'funcionario' ? 'Funcionário' : 'Aluno'}</p>
+            <div key={o.id} className={`person-card space-y-4 border-l-4 ${o.tipo === 'aluno' ? 'border-l-teal-700' : 'border-l-blue-900'}`}>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rule pb-3">
+                <p className={`person-badge ${o.tipo === 'aluno' ? 'bg-teal-100 text-teal-900' : 'bg-blue-100 text-blue-900'}`}><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{o.tipo === 'aluno' ? <><path d="m2 8 10-5 10 5-10 5zM6 10v7q6 5 12 0v-7M22 8v8" /></> : <><rect x="3" y="7" width="18" height="14" rx="2" /><path d="M8 7V3h8v4M3 12h18M10 12v3h4v-3" /></>}</svg>{n + 1}. {o.tipo === 'funcionario' ? 'Funcionário' : 'Aluno'}</p>
                 <button type="button" className="btn-danger" onClick={() => setOrientados(os => os.filter(x => x.id !== o.id))} aria-label={`Remover orientado ${n + 1}`}>Remover</button>
               </div>
               {o.tipo === 'funcionario' ? (
@@ -255,7 +255,7 @@ export default function NovaAta() {
                     <div><label className="label" htmlFor={`aluno-nome-${o.id}`}>Nome do aluno</label><input id={`aluno-nome-${o.id}`} className="field" autoFocus={o.foco} autoComplete="off" value={o.nome} onChange={e => upOrient(o.id, { nome: e.target.value })} /></div>
                     <div><label className="label" htmlFor={`aluno-turma-${o.id}`}>Turma</label><input id={`aluno-turma-${o.id}`} className="field" autoComplete="off" value={o.turma} onChange={e => upOrient(o.id, { turma: e.target.value })} placeholder="5º ano B" /></div>
                   </div>
-                  <div className="space-y-3 rounded-xl border border-rule p-4">
+                  <div className="space-y-3 rounded-xl border border-teal-200 bg-white p-4">
                     <p className="font-semibold">Responsável presente (opcional)</p>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div><label className="label" htmlFor={`acomp-nome-${o.id}`}>Nome</label><input id={`acomp-nome-${o.id}`} className="field" autoComplete="off" value={o.respNome} onChange={e => upOrient(o.id, { respNome: e.target.value })} /></div>

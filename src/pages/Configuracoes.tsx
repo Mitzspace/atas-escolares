@@ -98,24 +98,27 @@ function GrupoAssuntos({ chave, extras, onAdd, onRemove }: { chave: ChaveAssunto
   const [novo, setNovo] = useState('')
   const adicionar = () => { if (novo.trim()) { onAdd(novo); setNovo('') } }
   return (
-    <details className="rounded-xl border border-rule p-3">
-      <summary className="flex min-h-11 cursor-pointer items-center font-semibold">{ROTULOS_ASSUNTOS[chave]} <span className="ml-2 text-sm font-normal text-slate-600">({ASSUNTOS_PADRAO[chave].length + extras.length})</span></summary>
-      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+    <details className="subject-group group">
+      <summary className="subject-summary"><span className="min-w-0 flex-1">{ROTULOS_ASSUNTOS[chave]}</span><span className="rounded-full border border-rule bg-white px-3 py-1 font-normal text-slate-700">{ASSUNTOS_PADRAO[chave].length + extras.length}</span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 transition-transform group-open:rotate-180" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></summary>
+      <div className="space-y-4 border-t border-rule p-4">
+      <h3 className="font-semibold text-slate-700">Assuntos padrão · somente leitura</h3>
+      <ul className="list-disc space-y-3 pl-5 text-base text-slate-700">
         {ASSUNTOS_PADRAO[chave].map(a => <li key={a}>{a}</li>)}
       </ul>
       {extras.length > 0 && (
-        <ul className="mt-3 space-y-2">
+        <div className="border-t border-rule pt-4"><h3 className="mb-3 font-semibold text-ink">Assuntos da escola</h3><ul className="space-y-3">
           {extras.map(a => (
-            <li key={a} className="flex items-center gap-2">
-              <span className="flex-1 rounded-lg bg-blue-50 px-3 py-2 text-sm">{a}</span>
+            <li key={a} className="flex items-start gap-3">
+              <span className="min-w-0 flex-1 break-words rounded-xl border border-blue-100 bg-blue-50 px-3 py-3 text-base text-blue-900">{a}</span>
               <button type="button" className="btn-danger px-3" onClick={() => onRemove(a)} aria-label={`Remover ${a}`}>✕</button>
             </li>
           ))}
-        </ul>
+        </ul></div>
       )}
-      <div className="mt-3 flex gap-2">
+      <div className="grid gap-3 border-t border-rule pt-4 sm:grid-cols-[1fr_auto]">
         <input className="field" value={novo} onChange={e => setNovo(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); adicionar() } }} placeholder="Assunto da escola" aria-label={`Novo assunto de ${ROTULOS_ASSUNTOS[chave]}`} />
         <button type="button" className="btn-secondary" onClick={adicionar} disabled={!novo.trim()}>Adicionar</button>
+      </div>
       </div>
     </details>
   )
