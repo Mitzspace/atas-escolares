@@ -14,7 +14,7 @@ export default function Imprimir() {
 
   useEffect(() => {
     if (!ata?.renderizada) return
-    gerarPdfBlob(ata.renderizada, ata.textoEditado ?? ata.renderizada.texto).then(setBlob).catch(e => setErro(`Não foi possível gerar o PDF: ${e.message}`))
+    gerarPdfBlob(ata.renderizada, ata.textoEditado ?? ata.renderizada.texto, ata.meta).then(setBlob).catch(e => setErro(`Não foi possível gerar o PDF: ${e.message}`))
   }, [ata])
 
   if (ata === undefined) return <p className="text-slate-500">Carregando…</p>

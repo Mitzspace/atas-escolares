@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { validateAta } from '../ata-api'
 import { patchAta } from '../db'
 import { useAta, useDebouncedEffect, useSettings } from '../hooks'
+import { rotuloDoParticipante } from '../pessoas'
 import { aplicarPresenca, listaDePresenca, mesmaPessoa, listarMarcadores, preencherMarcador, type Marcador } from '../revisao'
 import type { AtaRecord } from '../types'
 
@@ -43,7 +44,12 @@ export default function RevisarAta() {
   )
   const marcadores = useMemo(() => (texto ? listarMarcadores(texto) : []), [texto])
   const lista = useMemo(
-    () => (ata ? listaDePresenca(ata.meta.participantes, settings?.pessoas ?? [], [ata.meta.presidente, ata.meta.secretario]) : []),
+    () => (ata ? listaDePresenca(
+      ata.meta.participantes,
+      // na orientação só vale quem foi informado (o cadastro inteiro não é convocado)
+      ata.meta.tipo === 'orientacao' ? [] : settings?.pessoas ?? [],
+      [ata.meta.presidente, ata.meta.secretario, ...(ata.meta.orientado ? [ata.meta.orientado] : [])],
+    ) : []),
     [ata, settings],
   )
   const paraConferir = useMemo(() => {
@@ -113,17 +119,25 @@ export default function RevisarAta() {
               </label>
             </li>
           ))}
+          {atual.meta.orientado && (
+            <li>
+              <label className="flex min-h-12 items-center gap-3 rounded-xl border border-rule bg-slate-50 p-4">
+                <input type="checkbox" className="size-6 shrink-0 accent-blue-900" checked disabled />
+                <span><b>{atual.meta.orientado.nome}</b> <span className="text-slate-600">— {rotuloDoParticipante(atual.meta.orientado)}</span> <span className="text-xs text-slate-500">(recebeu a orientação)</span></span>
+              </label>
+            </li>
+          )}
           {lista.map((p, i) => (
             <li key={`${p.nome}|${i}`}>
               <label className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border p-4 transition-colors ${p.presente ? 'border-blue-200 bg-blue-50/50' : 'border-rule bg-slate-50'}`}>
                 <input type="checkbox" className="size-6 shrink-0 accent-blue-900" checked={p.presente} onChange={() => alternarPresenca(i)} />
-                <span><b>{p.nome}</b> <span className="text-slate-600">— {p.cargo}</span></span>
+                <span><b>{p.nome}</b> <span className="text-slate-600">— {rotuloDoParticipante(p)}</span></span>
               </label>
             </li>
           ))}
         </ul>
         {lista.length === 0 && (
-          <p className="text-sm text-slate-600">Nenhum outro participante. Cadastre professores e funcionários em <Link to="/config" className="font-semibold underline">Configurações</Link>.</p>
+          <p className="text-sm text-slate-600">Nenhum outro participante.{atual.meta.tipo !== 'orientacao' && <> Cadastre professores e funcionários em <Link to="/config" className="font-semibold underline">Configurações</Link>.</>}</p>
         )}
         {textoDesatualizado && (
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900" role="alert">

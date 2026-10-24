@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { TIPOS_ATA } from '../ata-api'
 import { deleteAta, getSettings, listAtas } from '../db'
 import { proximaRota } from '../pipeline'
 import type { AtaRecord } from '../types'
@@ -49,7 +50,7 @@ export default function Inicio() {
             <li key={a.id} className="card">
               <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
                 <div>
-                  <p className="font-document text-xl font-semibold text-ink">Ata nº {a.meta.numero}/{a.meta.ano} – Reunião pedagógica</p>
+                  <p className="font-document text-xl font-semibold text-ink">Ata nº {a.meta.numero}/{a.meta.ano} – {TIPOS_ATA[a.meta.tipo ?? 'pedagogica']?.nome ?? 'Reunião pedagógica'}</p>
                   <p className="text-sm text-slate-600">{a.meta.data.split('-').reverse().join('/')} · {a.meta.escola}</p>
                 </div>
                 <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${COR[a.status]}`}>{ROTULO[a.status]}</span>
