@@ -1,2 +1,2 @@
-// Ponto único de importação da interface da ata. Trocar para './ata' quando o #3 entregar.
-export * from './ata-stub'
+// Ponto único de importação da interface da ata (implementada em src/ata, dono: Claude Code #3).
+export * from './ata'
