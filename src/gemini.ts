@@ -18,15 +18,20 @@ export const FAIXA_MINUTOS = 20
 /** acima disso a transcrição é pedida por faixas de tempo */
 export const LIMITE_SEM_FAIXAS_MIN = 60
 
+// tipos aceitos pelo Gemini (ai.google.dev/gemini-api/docs/audio): audio/mp4 NÃO está na lista, m4a vai como audio/m4a
 const MIME_POR_EXT: Record<string, string> = {
-  mp3: 'audio/mp3', m4a: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', webm: 'audio/webm', aac: 'audio/aac',
+  mp3: 'audio/mp3', m4a: 'audio/m4a', mp4: 'audio/m4a', wav: 'audio/wav', ogg: 'audio/ogg', webm: 'audio/webm',
+  aac: 'audio/aac', flac: 'audio/flac', opus: 'audio/opus',
 }
 export const EXTENSOES_AUDIO = Object.keys(MIME_POR_EXT)
 
 export function mimeDoAudio(file: { name: string; type: string }): string {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
   if (MIME_POR_EXT[ext]) return MIME_POR_EXT[ext]
-  if (file.type.startsWith('audio/') || file.type === 'video/webm') return file.type
+  const tipo = file.type.split(';')[0].trim().toLowerCase()
+  if (tipo === 'audio/mp4') return 'audio/m4a'
+  if (tipo === 'video/webm') return 'audio/webm'
+  if (tipo.startsWith('audio/')) return tipo
   throw new GeminiError('conteudo', `Formato de áudio não aceito (${ext || file.type}). Use mp3, m4a, wav, ogg, webm ou aac.`)
 }
 

@@ -23,8 +23,14 @@ describe('traduzirErro', () => {
 
 describe('mimeDoAudio', () => {
   it('usa extensão', () => {
-    expect(mimeDoAudio({ name: 'r.M4A', type: '' })).toBe('audio/mp4')
+    expect(mimeDoAudio({ name: 'r.M4A', type: '' })).toBe('audio/m4a')
     expect(mimeDoAudio({ name: 'r.mp3', type: 'audio/mpeg' })).toBe('audio/mp3')
+  })
+  it('aceita o que o MediaRecorder produz (Chrome/Android e Safari/iPhone)', () => {
+    expect(mimeDoAudio({ name: 'gravacao.webm', type: 'audio/webm;codecs=opus' })).toBe('audio/webm')
+    expect(mimeDoAudio({ name: 'gravacao.m4a', type: 'audio/mp4' })).toBe('audio/m4a')
+    expect(mimeDoAudio({ name: 'sem-extensao', type: 'audio/mp4;codecs=mp4a.40.2' })).toBe('audio/m4a')
+    expect(mimeDoAudio({ name: 'sem-extensao', type: 'audio/webm;codecs=opus' })).toBe('audio/webm')
   })
   it('recusa formato desconhecido', () => {
     expect(() => mimeDoAudio({ name: 'r.pdf', type: 'application/pdf' })).toThrow(/não aceito/)
