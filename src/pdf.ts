@@ -1,4 +1,5 @@
-import type { AtaRenderizada, Pessoa } from './ata-api'
+import type { AtaRenderizada, MeetingMetadata, Participante, Pessoa } from './ata-api'
+import { vinculoAnonimo } from './pessoas'
 // larguras (AFM Times-Roman, 1/1000 em) embutidas no próprio pdfmake
 import timesContainer from 'pdfmake/build/standard-fonts/Times'
 
@@ -67,19 +68,72 @@ export function preencherComTracos(texto: string, largura = LARGURA_TEXTO, taman
   return n >= 3 ? `${t} ${'-'.repeat(n)}` : t
 }
 
-function assinatura(p: Pessoa) {
+/**
+ * Linha de cargo da assinatura: "Mãe do aluno P.H., 5º ano B", "Aluno(a) – 5º ano B".
+ * Se a ata já trouxe o vínculo no cargo, não repete.
+ */
+export function cargoDaAssinatura(p: Pessoa, meta?: MeetingMetadata): string {
+  const info = [...(meta?.participantes ?? []), ...(meta?.orientado ? [meta.orientado] : [])].find(x => chaveNome(x.nome) === chaveNome(p.nome))
+  if (!info?.vinculo?.trim() || !info.categoria || info.categoria === 'funcionario') return p.cargo
+  const vinculo = meta?.anonimizarAlunos ? vinculoAnonimo(info.vinculo) : info.vinculo
+  if (p.cargo.toLocaleLowerCase('pt-BR').includes(vinculo.toLocaleLowerCase('pt-BR'))) return p.cargo
+  return info.categoria === 'responsavel' ? `${p.cargo} do ${vinculo}` : `${p.cargo} – ${vinculo}`
+}
+
+function assinatura(p: Pessoa, cargo = p.cargo) {
   return {
     unbreakable: true,
     margin: [0, 22, 0, 0] as [number, number, number, number],
     stack: [
       { canvas: [{ type: 'line' as const, x1: 0, y1: 0, x2: 250, y2: 0, lineWidth: 0.6 }] },
       { text: p.nome || ' ', fontSize: 11, margin: [0, 2, 0, 0] },
-      { text: p.cargo, fontSize: 10, italics: true },
+      { text: cargo, fontSize: 10, italics: true },
     ],
   }
 }
 
-export function montarDocumento(ata: AtaRenderizada, textoFinal: string) {
+const chaveNome = (n: string) => n.trim().toLocaleLowerCase('pt-BR')
+
+/** a partir daqui os responsáveis assinam numa página de anexo, e não uma linha cada um no corpo da ata */
+export const LIMITE_ANEXO_RESPONSAVEIS = 6
+
+export function responsaveisPresentes(meta?: MeetingMetadata): Participante[] {
+  if (!meta || meta.tipo !== 'pais') return []
+  return meta.participantes.filter(p => p.categoria === 'responsavel' && p.presente && p.nome.trim())
+}
+
+export const temAnexoDePresenca = (meta?: MeetingMetadata) => responsaveisPresentes(meta).length >= LIMITE_ANEXO_RESPONSAVEIS
+
+function anexoDePresenca(ata: AtaRenderizada, meta: MeetingMetadata) {
+  const linhas = responsaveisPresentes(meta)
+  const cel = (text: string, extra = {}) => ({ text, fontSize: 11, lineHeight: 1.1, ...extra })
+  return [
+    { text: 'LISTA DE PRESENÇA', alignment: 'center' as const, bold: true, pageBreak: 'before' as const, margin: [0, 0, 0, 4] as [number, number, number, number] },
+    { text: `Anexo da ${ata.titulo}`, alignment: 'center' as const, fontSize: 10, italics: true, margin: [0, 0, 0, 14] as [number, number, number, number] },
+    {
+      table: {
+        headerRows: 1,
+        dontBreakRows: true,
+        widths: ['*', 55, '*', 130],
+        body: [
+          ['Nome', 'Parentesco', 'Aluno / turma', 'Assinatura'].map(t => cel(t, { bold: true })),
+          ...linhas.map(p => [
+            cel(p.nome), cel(p.cargo),
+            cel(meta.anonimizarAlunos ? vinculoAnonimo(p.vinculo ?? '') : (p.vinculo ?? '')),
+            { text: ' ', margin: [0, 10, 0, 10] },
+          ]),
+        ],
+      },
+      layout: { hLineWidth: () => 0.5, vLineWidth: () => 0.5, paddingLeft: () => 5, paddingRight: () => 5, paddingTop: () => 4, paddingBottom: () => 4 },
+    },
+  ]
+}
+
+export function montarDocumento(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata) {
+  const anexo = meta && temAnexoDePresenca(meta)
+  const responsaveis = new Set(responsaveisPresentes(meta).map(p => chaveNome(p.nome)))
+  // com anexo, os responsáveis assinam só na lista; no corpo ficam os demais
+  const assinaturas = anexo ? ata.assinaturas.filter(a => !responsaveis.has(chaveNome(a.nome))) : ata.assinaturas
   return {
     pageSize: 'A4' as const,
     pageMargins: [MARGENS.esq, MARGENS.topo, MARGENS.dir, MARGENS.base] as [number, number, number, number],
@@ -93,7 +147,8 @@ export function montarDocumento(ata: AtaRenderizada, textoFinal: string) {
       ...ata.cabecalho.filter(Boolean).map((l, i) => ({ text: l, alignment: 'center' as const, bold: i === 0, lineHeight: 1.2 })),
       { text: ata.titulo, alignment: 'center' as const, bold: true, margin: [0, 18, 0, 14] as [number, number, number, number] },
       { text: preencherComTracos(textoFinal), alignment: 'justify' as const },
-      ...ata.assinaturas.map(assinatura),
+      ...assinaturas.map(a => assinatura(a, cargoDaAssinatura(a, meta))),
+      ...(anexo ? anexoDePresenca(ata, meta) : []),
     ],
   }
 }
@@ -105,14 +160,14 @@ async function carregarPdfMake() {
   return pdfMake
 }
 
-export async function gerarPdfBytes(ata: AtaRenderizada, textoFinal: string): Promise<Uint8Array> {
+export async function gerarPdfBytes(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata): Promise<Uint8Array> {
   const pdfMake = await carregarPdfMake()
-  const buf = await pdfMake.createPdf(montarDocumento(ata, textoFinal) as never).getBuffer()
+  const buf = await pdfMake.createPdf(montarDocumento(ata, textoFinal, meta) as never).getBuffer()
   return new Uint8Array(buf)
 }
 
-export async function gerarPdfBlob(ata: AtaRenderizada, textoFinal: string): Promise<Blob> {
-  return new Blob([(await gerarPdfBytes(ata, textoFinal)) as BlobPart], { type: 'application/pdf' })
+export async function gerarPdfBlob(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata): Promise<Blob> {
+  return new Blob([(await gerarPdfBytes(ata, textoFinal, meta)) as BlobPart], { type: 'application/pdf' })
 }
 
 export function nomeArquivo(ata: AtaRenderizada): string {
