@@ -51,24 +51,24 @@ const resp = (n: number): Participante[] => Array.from({ length: n }, (_, i) => 
 
 describe('pais: anexo de presença', () => {
   it('só a partir do limite, só em pais, só presentes', () => {
-    expect(temAnexoDePresenca({ ...metaBase, participantes: resp(5) })).toBe(false)
-    expect(temAnexoDePresenca({ ...metaBase, participantes: resp(6) })).toBe(true)
+    expect(temAnexoDePresenca({ ...metaBase, participantes: resp(8) })).toBe(false)
+    expect(temAnexoDePresenca({ ...metaBase, participantes: resp(9) })).toBe(true)
     expect(temAnexoDePresenca({ ...metaBase, tipo: 'pedagogica', participantes: resp(8) })).toBe(false)
     expect(responsaveisPresentes({ ...metaBase, participantes: [...resp(2), { ...resp(1)[0], nome: 'Ausente', presente: false }] })).toHaveLength(2)
   })
   it('com anexo, o corpo não repete os responsáveis e a tabela lista todos', () => {
-    const meta = { ...metaBase, participantes: resp(7) }
-    const ata = { ...ata0(), assinaturas: [metaBase.presidente, ...resp(7)] }
+    const meta = { ...metaBase, participantes: resp(9) }
+    const ata = { ...ata0(), assinaturas: [metaBase.presidente, ...resp(9)] }
     const doc = montarDocumento(ata, ata.texto, meta)
     const texto = JSON.stringify(doc.content)
     expect(texto).toContain('LISTA DE PRESENÇA')
     const assinaturasNoCorpo = doc.content.filter(c => 'stack' in c)
     expect(assinaturasNoCorpo).toHaveLength(1)
     const tabela = doc.content.find(c => 'table' in c) as { table: { body: unknown[][] } }
-    expect(tabela.table.body).toHaveLength(8) // cabeçalho + 7
+    expect(tabela.table.body).toHaveLength(10) // cabeçalho + 9
   })
   it('anexo anonimiza o aluno quando pedido', () => {
-    const meta = { ...metaBase, anonimizarAlunos: true, participantes: resp(6) }
+    const meta = { ...metaBase, anonimizarAlunos: true, participantes: resp(9) }
     expect(JSON.stringify(montarDocumento(ata0(), 'x', meta).content)).toContain('aluno A.1.')
   })
   it('gera PDF válido com anexo', async () => {

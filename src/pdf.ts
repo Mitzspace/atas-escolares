@@ -1,4 +1,5 @@
 import type { AtaRenderizada, MeetingMetadata, Participante, Pessoa } from './ata-api'
+import { usaListaAnexa } from './ata-api'
 import { vinculoAnonimo } from './pessoas'
 // larguras (AFM Times-Roman, 1/1000 em) embutidas no próprio pdfmake
 import timesContainer from 'pdfmake/build/standard-fonts/Times'
@@ -94,15 +95,13 @@ function assinatura(p: Pessoa, cargo = p.cargo) {
 
 const chaveNome = (n: string) => n.trim().toLocaleLowerCase('pt-BR')
 
-/** a partir daqui os responsáveis assinam numa página de anexo, e não uma linha cada um no corpo da ata */
-export const LIMITE_ANEXO_RESPONSAVEIS = 6
-
 export function responsaveisPresentes(meta?: MeetingMetadata): Participante[] {
   if (!meta || meta.tipo !== 'pais') return []
   return meta.participantes.filter(p => p.categoria === 'responsavel' && p.presente && p.nome.trim())
 }
 
-export const temAnexoDePresenca = (meta?: MeetingMetadata) => responsaveisPresentes(meta).length >= LIMITE_ANEXO_RESPONSAVEIS
+/** mesma regra do texto da ata: com muitos responsáveis eles assinam numa página de anexo */
+export const temAnexoDePresenca = (meta?: MeetingMetadata) => !!meta && usaListaAnexa(meta)
 
 function anexoDePresenca(ata: AtaRenderizada, meta: MeetingMetadata) {
   const linhas = responsaveisPresentes(meta)
