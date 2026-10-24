@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { renderAta, type AtaExtraida, type MeetingMetadata } from './ata-api'
-import { aplicarPresenca, listaDePresenca, listarMarcadores, preencherMarcador } from './revisao'
+import { aplicarPresenca, listaDePresenca, listarMarcadores, preencherIguais, preencherMarcador } from './revisao'
 import type { AtaRecord } from './types'
 
 const meta: MeetingMetadata = {
@@ -91,4 +91,149 @@ it('listaDePresenca junta o cadastro sem repetir e sem presidente/secretário', 
     { nome: 'Maria Souza', cargo: 'Diretora' },
   ], [meta.presidente, meta.secretario])
   expect(l.map(p => [p.nome, p.presente])).toEqual([['Joana Alves', true], ['Carlos Mendes', true], ['Rui Lopes', false]])
+})
+
+describe('preencherMarcador com valores reais', () => {
+  const um = (t: string, v: string, i = 0) => preencherMarcador(t, listarMarcadores(t)[i], v)
+
+  it('ordinais, decimais, datas e abreviações vão por extenso', () => {
+    const t = 'A turma [PENDENTE: turma citada] teve média [PENDENTE: média]. Falou [PENDENTE: nome], coordenadora, em [PENDENTE: data].'
+    let r = um(t, '3º ano B')
+    expect(r).toContain('A turma terceiro ano B teve')
+    r = um(r, '2,5')
+    expect(r).toContain('média dois vírgula cinco.')
+    r = um(r, 'Prof. Carlos')
+    expect(r).toContain('Falou professor Carlos, coordenadora')
+    r = um(r, '05/11')
+    expect(r).toContain('em cinco de novembro.')
+    expect(listarMarcadores(r)).toEqual([])
+    expect(r).not.toMatch(/\d/)
+  })
+
+  it('não repete a pontuação que já vem depois do marcador', () => {
+    expect(um('Foi no dia [PENDENTE: data].', 'cinco de novembro.')).toBe('Foi no dia cinco de novembro.')
+    expect(um('O aluno [confirmar: nome] faltou.', 'J.P.S.')).toBe('O aluno J.P.S. faltou.')
+    expect(um('O aluno [confirmar: nome].', 'J.P.S.')).toBe('O aluno J.P.S.')
+  })
+
+  it('põe maiúscula quando o marcador abre a frase', () => {
+    expect(um('Terminou. [PENDENTE: quem falou] disse que sim.', 'a professora Clara')).toBe('Terminou. A professora Clara disse que sim.')
+    expect(um('[PENDENTE: quem falou] disse que sim.', 'prof. Carlos')).toBe('Professor Carlos disse que sim.')
+  })
+
+  it('[confirmar: ...] no meio da frase: preenche ou remove sem sobrar vírgula', () => {
+    const t = 'A coordenadora, [confirmar: nome], informou o prazo.'
+    expect(um(t, 'Joana Alves')).toBe('A coordenadora, Joana Alves, informou o prazo.')
+    expect(um(t, '')).toBe('A coordenadora, informou o prazo.')
+    expect(um('No segundo item da pauta, [PENDENTE: item não registrado].', '')).toBe('No segundo item da pauta.')
+  })
+
+  it('horários: 14:30, 14h30, 9h, sem repetir "às", e inválidos não quebram', () => {
+    const t = 'Encerrada a reunião [PENDENTE: horário de término], e eu'
+    expect(um(t, '14:30')).toBe('Encerrada a reunião às quatorze horas e trinta minutos, e eu')
+    expect(um(t, '14h30')).toBe('Encerrada a reunião às quatorze horas e trinta minutos, e eu')
+    expect(um(t, '9h')).toBe('Encerrada a reunião às nove horas, e eu')
+    expect(um(t, '12:00')).toBe('Encerrada a reunião ao meio-dia, e eu')
+    expect(um('Encerrada às [PENDENTE: horário de término], e eu', '15:10')).toBe('Encerrada às quinze horas e dez minutos, e eu')
+    expect(() => um(t, '25:99')).not.toThrow()
+    expect(um(t, 'por volta das quinze horas')).toBe('Encerrada a reunião por volta das quinze horas, e eu')
+  })
+
+  it('marcadores repetidos: um por vez, ou todos de uma vez', () => {
+    const t = 'A [PENDENTE: nome da professora] disse. Depois a [PENDENTE: nome da professora] concordou. E [PENDENTE: prazo].'
+    const ms = listarMarcadores(t)
+    expect(ms).toHaveLength(3)
+    const so1 = preencherMarcador(t, ms[0], 'Clara')
+    expect(listarMarcadores(so1).map(m => m.descricao)).toEqual(['nome da professora', 'prazo'])
+    const todos = preencherIguais(t, ms[1], 'Clara')
+    expect(todos).toBe('A Clara disse. Depois a Clara concordou. E [PENDENTE: prazo].')
+  })
+
+  it('preencherIguais não entra em laço se o valor traz o mesmo marcador', () => {
+    const t = 'A [PENDENTE: x] e a [PENDENTE: x].'
+    expect(() => preencherIguais(t, listarMarcadores(t)[0], '[PENDENTE: x]')).not.toThrow()
+  })
+
+  it('listarMarcadores: contexto sem cortar a primeira palavra quando o texto é curto', () => {
+    const [m] = listarMarcadores('Aos doze dias [PENDENTE: x]')
+    expect(m.contexto).toBe('Aos doze dias ')
+    const longo = 'palavra '.repeat(30) + '[PENDENTE: x]'
+    expect(listarMarcadores(longo)[0].contexto.startsWith('…')).toBe(true)
+  })
+
+  it('reconhece os três tipos', () => {
+    const ms = listarMarcadores('a [PENDENTE: p] b [confirmar: c] d [trecho inaudível] e [inaudível: f]')
+    expect(ms.map(m => [m.tipo, m.descricao])).toEqual([
+      ['pendente', 'p'], ['confirmar', 'c'], ['inaudivel', 'trecho inaudível'], ['inaudivel', 'f'],
+    ])
+  })
+})
+
+describe('aplicarPresenca em situações reais', () => {
+  const com = (presentes: boolean[]) => meta.participantes.map((p, i) => ({ ...p, presente: presentes[i] }))
+  const aplicar = (a: AtaRecord, presentes: boolean[]) => {
+    const r = aplicarPresenca(a, com(presentes))
+    // como a tela faz: guarda a nova ata e o texto visto pela usuária
+    return { r, a: { ...a, meta: r.meta, renderizada: r.renderizada, textoEditado: r.texto } as AtaRecord }
+  }
+
+  it('todos ausentes: só presidente e secretário', () => {
+    const { r } = aplicar(ata(), [false, false])
+    expect(r.texto).toContain('totalizando dois presentes')
+    expect(r.texto).toContain('Não compareceram os seguintes convocados: Joana Alves, coordenadora pedagógica e Carlos Mendes, professor.')
+    expect(r.renderizada.assinaturas.map(p => p.nome)).toEqual(['Maria Souza', 'Paulo Reis'])
+  })
+
+  it('ida e volta (ausente -> presente) devolve o texto original, com edições preservadas', () => {
+    const a0 = ata()
+    const editado = a0.renderizada!.texto.replace('apresentou a proposta', 'apresentou com detalhes a proposta')
+    const { a: a1, r: r1 } = aplicar({ ...a0, textoEditado: editado }, [true, false])
+    expect(r1.textoPreservado).toBe(true)
+    expect(r1.texto).toContain('Não compareceu o seguinte convocado: Carlos Mendes')
+    const { r: r2 } = aplicar(a1, [true, true])
+    expect(r2.textoPreservado).toBe(true)
+    expect(r2.texto).toBe(editado)
+    expect(r2.texto).not.toContain('Não compareceu')
+  })
+
+  it('edição só no meio e horário de término já preenchido continuam no texto', () => {
+    const a0 = ata()
+    const preenchido = preencherMarcador(
+      a0.renderizada!.texto,
+      listarMarcadores(a0.renderizada!.texto).find(m => m.hora)!,
+      '15:10',
+    ).replace('Enviar', 'Providenciar').replace('enviar o regulamento', 'providenciar o regulamento')
+    const { r } = aplicar({ ...a0, textoEditado: preenchido }, [false, true])
+    expect(r.textoPreservado).toBe(true)
+    expect(r.texto).toContain('foi encerrada a reunião às quinze horas e dez minutos, e eu')
+    expect(r.texto).toContain('providenciar o regulamento')
+    expect(r.texto).toContain('Não compareceu o seguinte convocado: Joana Alves')
+    expect(listarMarcadores(r.texto).map(m => m.descricao)).toEqual(['prazo do primeiro encaminhamento'])
+  })
+
+  it('pendência já preenchida em outro ponto do texto não volta', () => {
+    const a0 = ata()
+    const t0 = a0.renderizada!.texto
+    const sem = preencherMarcador(t0, listarMarcadores(t0)[0], 'até trinta de outubro')
+    const { r } = aplicar({ ...a0, textoEditado: sem }, [true, false])
+    expect(r.texto).toContain('prazo: até trinta de outubro')
+    expect(r.texto).not.toContain('prazo do primeiro encaminhamento')
+  })
+
+  it('texto idêntico ao gerado acompanha a presença mesmo sem textoEditado', () => {
+    const { r } = aplicar({ ...ata(), textoEditado: ata().renderizada!.texto }, [false, false])
+    expect(r.textoPreservado).toBe(true)
+    expect(r.texto).toContain('Não compareceram')
+  })
+})
+
+describe('listaDePresenca: nomes com acento, caixa e espaços', () => {
+  it('não repete "María  Souza" com "Maria Souza" e mantém quem já estava na ata', () => {
+    const l = listaDePresenca(
+      [{ nome: 'Joana Alves', cargo: 'Coordenadora', presente: false }],
+      [{ nome: 'JOANA  ALVES', cargo: 'x' }, { nome: 'María Souza', cargo: 'Diretora' }, { nome: 'Ana Lima', cargo: 'Professora' }],
+      [{ nome: 'Maria Souza', cargo: 'Diretora' }],
+    )
+    expect(l.map(p => [p.nome, p.presente])).toEqual([['Joana Alves', false], ['Ana Lima', false]])
+  })
 })

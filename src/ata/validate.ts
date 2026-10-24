@@ -8,10 +8,13 @@ const ABREVIACAO = /\b(?:Prof|Profa|Sr|Sra|Dr|Dra|Coord|Dir|Resp|Obs|Pág|Nr)\.(
 const FORMATACAO = /(\*\*|__|`|•|^#|\s#\s)/;
 const FORA_DO_PADRAO = /\b(?:nós|vamos|iremos|faremos|a gente)\b/gi;
 
+/** Nova regex (global) das marcações [PENDENTE: ...], [trecho inaudível] e [confirmar: ...]; grupos: 1 = tipo, 2 = detalhe. */
+export const novoMarcadorRegex = () => new RegExp(MARCADOR.source, MARCADOR.flags);
+
 /** Descrições das marcações [PENDENTE: ...], [trecho inaudível] e [confirmar: ...] presentes no texto. */
 export function extrairMarcadores(texto: string): string[] {
   const out: string[] = [];
-  for (const m of texto.matchAll(MARCADOR)) {
+  for (const m of texto.matchAll(novoMarcadorRegex())) {
     const tipo = m[1].toLowerCase();
     const det = m[2].trim();
     if (tipo === 'pendente') out.push(det || 'informação pendente');

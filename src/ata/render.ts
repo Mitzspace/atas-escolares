@@ -1,6 +1,6 @@
 import type { AtaExtraida, AtaRenderizada, MeetingMetadata, Pessoa } from './types';
 import { dataPorExtenso, horaPorExtenso, numeroPorExtenso, ordinalPorExtenso } from './extenso';
-import { numerosParaExtenso } from './numeros';
+import { textoLivreParaPadrao } from './numeros';
 import { extrairMarcadores } from './validate';
 
 const limpar = (s: string) => s.replace(/\s+/g, ' ').trim();
@@ -195,7 +195,7 @@ export function renderAta(meta: MeetingMetadata, extraida: AtaExtraida): AtaRend
   }
   partes.push(...desenvolvimento(meta, extraida).map(comPontoFinal), encerramento(meta));
 
-  const texto = numerosParaExtenso(limpar(partes.join(' '))).replace(/\s+([,;:.])/g, '$1');
+  const texto = textoLivreParaPadrao(limpar(partes.join(' '))).replace(/\s+([,;:.])/g, '$1');
 
   const vistas = new Set<string>();
   const pendencias: string[] = [];

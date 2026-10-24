@@ -11,7 +11,7 @@ export type {
 export { buildTranscriptionPrompt, buildAtaPrompt } from './prompts';
 export { transcriptResponseSchema, ataResponseSchema } from './schemas';
 export { renderAta } from './render';
-export { validateAta, extrairMarcadores } from './validate';
+export { validateAta, extrairMarcadores, novoMarcadorRegex } from './validate';
 export {
   dataPorExtenso,
   horaPorExtenso,
@@ -19,4 +19,4 @@ export {
   ordinalPorExtenso,
   dataCurtaPorExtenso,
 } from './extenso';
-export { numerosParaExtenso } from './numeros';
+export { numerosParaExtenso, abreviacoesPorExtenso, textoLivreParaPadrao } from './numeros';

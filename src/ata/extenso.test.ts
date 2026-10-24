@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { dataPorExtenso, horaPorExtenso, numeroPorExtenso, ordinalPorExtenso } from './extenso';
-import { numerosParaExtenso } from './numeros';
+import { abreviacoesPorExtenso, numerosParaExtenso } from './numeros';
 
 describe('numeroPorExtenso', () => {
   it.each([
@@ -123,13 +123,27 @@ describe('numerosParaExtenso', () => {
     expect(numerosParaExtenso(entrada)).toBe(esperado);
   });
 
-  it('deixa intactos decimais e códigos', () => {
-    expect(numerosParaExtenso('média de 2,5')).toBe('média de 2,5');
+  it('converte decimais; listas e códigos não viram decimal', () => {
+    expect(numerosParaExtenso('média de 2,5')).toBe('média de dois vírgula cinco');
+    expect(numerosParaExtenso('2,25')).toBe('dois vírgula vinte e cinco');
+    expect(numerosParaExtenso('2,05')).toBe('dois vírgula zero cinco');
+    expect(numerosParaExtenso('0,125')).toBe('zero vírgula um dois cinco');
+    expect(numerosParaExtenso('2,5%')).toBe('dois vírgula cinco por cento');
+    expect(numerosParaExtenso('1,2,3')).toBe('um,dois,três');
     expect(numerosParaExtenso('turma 3A')).toBe('turma 3A');
   });
 
   it('é idempotente sobre texto sem dígitos', () => {
     const t = 'Aos doze dias do mês de março.';
     expect(numerosParaExtenso(t)).toBe(t);
+  });
+});
+
+describe('abreviacoesPorExtenso', () => {
+  it('expande as sem ambiguidade e capitaliza início de frase', () => {
+    expect(abreviacoesPorExtenso('a Prof. Maria e o Sr. João')).toBe('a professor Maria e o senhor João');
+    expect(abreviacoesPorExtenso('Profa. Ana falou. Dr. Rui ouviu.')).toBe('Professora Ana falou. Doutor Rui ouviu.');
+    expect(abreviacoesPorExtenso('com Prof.Carlos')).toBe('com professor Carlos');
+    expect(abreviacoesPorExtenso('Professor Carlos')).toBe('Professor Carlos');
   });
 });
