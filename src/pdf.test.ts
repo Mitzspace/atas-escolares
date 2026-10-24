@@ -91,6 +91,21 @@ describe('cargoDaAssinatura', () => {
     expect(cargoDaAssinatura({ nome: 'João', cargo: 'Aluno(a)' }, meta)).toBe('Aluno(a) – 5º ano B')
     expect(cargoDaAssinatura({ nome: 'João', cargo: 'Aluno(a) da turma 5º ano B' }, meta)).toBe('Aluno(a) da turma 5º ano B')
   })
+  it('vários orientados mistos: cada um recebe o seu vínculo; atas antigas (orientado) continuam valendo', () => {
+    const meta = {
+      ...metaBase, tipo: 'orientacao' as const,
+      orientados: [
+        { nome: 'João', cargo: 'Aluno(a)', presente: true, categoria: 'aluno' as const, vinculo: '5º ano B' },
+        { nome: 'Rita', cargo: 'Professora', presente: true, categoria: 'funcionario' as const },
+        { nome: 'Lia', cargo: 'Aluno(a)', presente: true, categoria: 'aluno' as const, vinculo: '6º ano A' },
+      ],
+    }
+    expect(cargoDaAssinatura({ nome: 'João', cargo: 'Aluno(a)' }, meta)).toBe('Aluno(a) – 5º ano B')
+    expect(cargoDaAssinatura({ nome: 'Rita', cargo: 'Professora' }, meta)).toBe('Professora')
+    expect(cargoDaAssinatura({ nome: 'Lia', cargo: 'Aluno(a)' }, meta)).toBe('Aluno(a) – 6º ano A')
+    const antiga = { ...metaBase, tipo: 'orientacao' as const, orientado: { nome: 'Teo', cargo: 'Aluno(a)', presente: true, categoria: 'aluno' as const, vinculo: '7º B' } }
+    expect(cargoDaAssinatura({ nome: 'Teo', cargo: 'Aluno(a)' }, antiga)).toBe('Aluno(a) – 7º B')
+  })
   it('ata antiga (sem categoria) e funcionário ficam como estão', () => {
     const meta = { ...metaBase, tipo: 'pedagogica' as const, participantes: [{ nome: 'Rita', cargo: 'Professora', presente: true }] }
     expect(cargoDaAssinatura({ nome: 'Rita', cargo: 'Professora' }, meta)).toBe('Professora')

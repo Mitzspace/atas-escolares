@@ -1,4 +1,4 @@
-import type { AtaRenderizada, MeetingMetadata, Participante, Pessoa } from './ata-api'
+import { listarOrientados, type AtaRenderizada, type MeetingMetadata, type Participante, type Pessoa } from './ata-api'
 import { usaListaAnexa } from './ata-api'
 import { vinculoAnonimo } from './pessoas'
 // larguras (AFM Times-Roman, 1/1000 em) embutidas no próprio pdfmake
@@ -74,7 +74,7 @@ export function preencherComTracos(texto: string, largura = LARGURA_TEXTO, taman
  * Se a ata já trouxe o vínculo no cargo, não repete.
  */
 export function cargoDaAssinatura(p: Pessoa, meta?: MeetingMetadata): string {
-  const info = [...(meta?.participantes ?? []), ...(meta?.orientado ? [meta.orientado] : [])].find(x => chaveNome(x.nome) === chaveNome(p.nome))
+  const info = [...(meta?.participantes ?? []), ...(meta ? listarOrientados(meta) : [])].find(x => chaveNome(x.nome) === chaveNome(p.nome))
   if (!info?.vinculo?.trim() || !info.categoria || info.categoria === 'funcionario') return p.cargo
   const vinculo = meta?.anonimizarAlunos ? vinculoAnonimo(info.vinculo) : info.vinculo
   if (p.cargo.toLocaleLowerCase('pt-BR').includes(vinculo.toLocaleLowerCase('pt-BR'))) return p.cargo
