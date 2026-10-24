@@ -1,5 +1,8 @@
 export type {
   Pessoa,
+  TipoAta,
+  Categoria,
+  Participante,
   MeetingMetadata,
   TranscriptSegment,
   ItemRelato,
@@ -8,6 +11,7 @@ export type {
   AtaExtraida,
   AtaRenderizada,
 } from './types';
+export { TIPOS_ATA } from './types';
 export { buildTranscriptionPrompt, buildAtaPrompt } from './prompts';
 export { transcriptResponseSchema, ataResponseSchema } from './schemas';
 export { renderAta } from './render';
