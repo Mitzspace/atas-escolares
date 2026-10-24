@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { MeetingMetadata, Pessoa } from '../ata-api'
-import { getSettings, novoId, proximoNumero, saveAta, saveAudio, saveSettings } from '../db'
-import { EXTENSOES_AUDIO, mimeDoAudio } from '../gemini'
+import Gravador from '../components/Gravador'
+import { apagarSessaoGravacao, getSettings, novoId, proximoNumero, saveAta, saveAudio, saveSettings } from '../db'
+import { mimeDoAudio } from '../gemini'
 import type { Settings } from '../types'
 
 type Part = Pessoa & { presente: boolean }
@@ -32,6 +33,7 @@ export default function NovaAta() {
   const [anonimizar, setAnonimizar] = useState(true)
   const [glossario, setGlossario] = useState('')
   const [audio, setAudio] = useState<File | null>(null)
+  const [sessaoGravacao, setSessaoGravacao] = useState<string | undefined>()
   const [erro, setErro] = useState('')
   const [salvando, setSalvando] = useState(false)
 
@@ -50,7 +52,7 @@ export default function NovaAta() {
   async function enviar(e: React.FormEvent) {
     e.preventDefault()
     setErro('')
-    if (!audio) return setErro('Escolha o arquivo de áudio da reunião.')
+    if (!audio) return setErro('Grave ou envie o áudio da reunião.')
     try { mimeDoAudio(audio) } catch (x) { return setErro((x as Error).message) }
     if (audio.size > TAMANHO_MAX_MB * 1024 * 1024) return setErro(`O arquivo tem mais de ${TAMANHO_MAX_MB} MB. Envie um áudio menor (ou em mp3/m4a).`)
     if (!escola.trim()) return setErro('Informe o nome da escola.')
@@ -80,6 +82,7 @@ export default function NovaAta() {
     if (novos.length) await saveSettings({ ...cfg!, pessoas: [...cfg!.pessoas, ...novos] })
     const id = novoId()
     await saveAudio(id, audio)
+    if (sessaoGravacao) await apagarSessaoGravacao(sessaoGravacao)
     await saveAta({ id, criadaEm: Date.now(), atualizadaEm: Date.now(), status: 'rascunho', meta, audioNome: audio.name })
     nav(`/ata/${id}/processando/transcricao`, { replace: true })
   }
@@ -97,16 +100,7 @@ export default function NovaAta() {
 
       <section className="card space-y-5">
         <h2 className="font-semibold">Áudio da reunião</h2>
-        <input
-          type="file"
-          accept={EXTENSOES_AUDIO.map(x => `.${x}`).join(',') + ',audio/*'}
-          onChange={e => setAudio(e.target.files?.[0] ?? null)}
-          aria-label="Áudio da reunião" className="field file:mr-3 file:min-h-11 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:text-blue-900"
-        />
-        <p className="text-sm text-slate-600">
-          mp3, m4a, wav, ogg, webm ou aac. Dica: grave com o gravador do celular e envie o arquivo aqui.
-          {audio && <> Selecionado: <b>{audio.name}</b> ({(audio.size / 1024 / 1024).toFixed(1)} MB).</>}
-        </p>
+        <Gravador arquivo={audio} onChange={(f, sessao) => { setAudio(f); setSessaoGravacao(sessao) }} />
       </section>
 
       <section className="card space-y-5">
