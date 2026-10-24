@@ -14,7 +14,7 @@ export type {
 export { TIPOS_ATA } from './types';
 export { buildTranscriptionPrompt, buildAtaPrompt } from './prompts';
 export { transcriptResponseSchema, ataResponseSchema } from './schemas';
-export { renderAta } from './render';
+export { renderAta, usaListaAnexa, LIMITE_RESPONSAVEIS_NO_TEXTO } from './render';
 export { validateAta, extrairMarcadores, novoMarcadorRegex } from './validate';
 export {
   dataPorExtenso,

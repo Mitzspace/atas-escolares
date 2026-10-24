@@ -169,7 +169,7 @@ describe('prompts e schemas', () => {
         ? Object.entries(o).flatMap(([k, v]) => (k === 'type' && typeof v === 'string' ? [v] : tipos(v)))
         : [];
     for (const s of [transcriptResponseSchema, ataResponseSchema]) {
-      for (const t of tipos(s)) expect(['OBJECT', 'ARRAY', 'STRING', 'INTEGER']).toContain(t);
+      for (const t of tipos(s)) expect(['OBJECT', 'ARRAY', 'STRING', 'INTEGER', 'BOOLEAN']).toContain(t);
     }
     expect((ataResponseSchema as { required: string[] }).required).toEqual(['itens', 'deliberacoes', 'encaminhamentos', 'pendencias']);
   });

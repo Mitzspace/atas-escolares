@@ -261,3 +261,46 @@ describe('aplicarPresenca: só convocados aparecem como ausentes', () => {
     expect(volta.meta.participantes.map(p => p.nome)).not.toContain('Rui Lopes')
   })
 })
+
+describe('tipos de ata: categoria, vínculo e orientado', () => {
+  const mae = { nome: 'Clara Lima', cargo: 'Mãe', categoria: 'responsavel' as const, vinculo: 'aluna Ana Lima, 5º ano B', presente: true }
+  const aluna = { nome: 'Ana Lima', cargo: 'Aluna', categoria: 'aluno' as const, vinculo: '5º ano B', presente: true }
+  const orientacao = (): AtaRecord => {
+    const m: MeetingMetadata = { ...meta, tipo: 'orientacao', participantes: [mae], orientado: aluna, pauta: ['Faltas'] }
+    const e = { ...extraida, orientacoes: ['A diretora orientou a justificar as faltas.'] }
+    return { id: 'o', criadaEm: 0, atualizadaEm: 0, status: 'ata', meta: m, extraida: e, renderizada: renderAta(m, e) }
+  }
+
+  it('aplicarPresenca mantém categoria, vínculo e o orientado; o responsável ausente não some', () => {
+    const r = aplicarPresenca(orientacao(), [{ ...mae, presente: false }])
+    expect(r.meta.orientado).toEqual(aluna)
+    expect(r.meta.participantes).toEqual([{ ...mae, presente: false }])
+    expect(r.texto).toContain('a aluna orientada Ana Lima, do quinto ano B')
+    expect(r.texto).toContain('Não compareceu o seguinte convocado: Clara Lima, mãe da aluna Ana Lima, do quinto ano B.')
+    expect(r.renderizada.assinaturas.map(p => p.nome)).toEqual(['Maria Souza', 'Paulo Reis', 'Ana Lima'])
+  })
+
+  it('responsável adicionado à mão continua na lista mesmo fora dos convocados', () => {
+    const a = { ...orientacao(), convocados: [] as string[] }
+    const r = aplicarPresenca(a, [{ ...mae, presente: false }])
+    expect(r.meta.participantes.map(p => p.nome)).toEqual(['Clara Lima'])
+  })
+
+  it('o orientado não vira participante repetido (nem ausente)', () => {
+    const r = aplicarPresenca(orientacao(), [{ nome: 'Ana Lima', cargo: 'Aluna', presente: false }, mae])
+    expect(r.meta.participantes.map(p => p.nome)).toEqual(['Clara Lima'])
+    expect(r.renderizada.assinaturas.filter(p => p.nome === 'Ana Lima')).toHaveLength(1)
+    expect(r.texto).not.toContain('Não compareceu')
+  })
+
+  it('listaDePresenca ignora o orientado vindo do cadastro e preserva categoria/vínculo', () => {
+    const l = listaDePresenca([mae], [{ nome: 'Ana Lima', cargo: 'Aluna' }, { nome: 'Rui Lopes', cargo: 'Professor' }], [], aluna)
+    expect(l.map(p => p.nome)).toEqual(['Clara Lima', 'Rui Lopes'])
+    expect(l[0]).toMatchObject({ categoria: 'responsavel', vinculo: 'aluna Ana Lima, 5º ano B' })
+  })
+
+  it('ata antiga (sem categoria) continua mudando a presença como antes', () => {
+    const r = aplicarPresenca(ata(), [meta.participantes[0], { ...meta.participantes[1], presente: false }])
+    expect(r.texto).toContain('Não compareceu o seguinte convocado: Carlos Mendes, professor')
+  })
+})

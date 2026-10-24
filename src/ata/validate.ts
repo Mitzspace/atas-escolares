@@ -73,5 +73,18 @@ export function validateAta(r: AtaRenderizada): string[] {
 
   if (r.assinaturas.length === 0) problemas.push('Nenhuma assinatura prevista.');
 
+  // verificações por tipo (o tipo vem do título: "... – ORIENTAÇÃO A ALUNO", "... – REUNIÃO DE PAIS E RESPONSÁVEIS")
+  if (/ORIENTA[ÇC][ÃA]O/i.test(r.titulo)) {
+    if (!/para tratar de orientação sobre: /.test(texto)) {
+      problemas.push('Abertura da orientação fora do padrão: esperado "... reuniram-se [orientador] e [orientado], ... para tratar de orientação sobre: ...".');
+    }
+    if (!/ci[êe]ncia/i.test(texto)) problemas.push('Falta o registro da ciência do orientado (ou a marcação [PENDENTE: ciência do orientado]).');
+    if (!/orienta[çc][õo]es/i.test(texto)) problemas.push('Não há registro das orientações dadas.');
+    if (r.assinaturas.length < 2) problemas.push('A orientação deve ter ao menos duas assinaturas: quem orienta e o orientado.');
+  } else if (/PAIS E RESPONS[ÁA]VEIS/i.test(r.titulo)) {
+    if (!/respons[áa]ve(?:l|is)/i.test(texto)) problemas.push('Reunião de pais sem registro dos responsáveis presentes.');
+    if (r.assinaturas.length < 2) problemas.push('Reunião de pais sem assinaturas de responsáveis.');
+  }
+
   return problemas;
 }

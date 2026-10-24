@@ -68,6 +68,22 @@ export const ataResponseSchema: object = {
         propertyOrdering: ['acao', 'responsavel', 'prazo'],
       },
     },
+    manifestacoes: {
+      type: 'ARRAY',
+      description:
+        'OPCIONAL. Reunião de pais: dúvidas e demandas das famílias, sem identificar casos individuais. Orientação: manifestações do orientado e de quem o acompanha. Cada item, uma frase no pretérito perfeito. Omitir ou [] nas reuniões pedagógicas.',
+      items: { type: 'STRING' },
+    },
+    orientacoes: {
+      type: 'ARRAY',
+      description: 'OPCIONAL. Só em orientação: cada orientação dada, uma frase no pretérito perfeito. Omitir ou [] nos demais tipos.',
+      items: { type: 'STRING' },
+    },
+    cienciaOrientado: {
+      type: 'BOOLEAN',
+      description:
+        'OPCIONAL. Só em orientação: true SOMENTE se a transcrição mostra que o orientado tomou ciência/declarou ter entendido as orientações; caso contrário false.',
+    },
     pendencias: {
       type: 'ARRAY',
       description: 'Descrição de cada marcação [PENDENTE: ...] ou [trecho inaudível] usada nos relatos.',
@@ -75,5 +91,5 @@ export const ataResponseSchema: object = {
     },
   },
   required: ['itens', 'deliberacoes', 'encaminhamentos', 'pendencias'],
-  propertyOrdering: ['itens', 'deliberacoes', 'encaminhamentos', 'pendencias'],
+  propertyOrdering: ['itens', 'manifestacoes', 'orientacoes', 'deliberacoes', 'encaminhamentos', 'cienciaOrientado', 'pendencias'],
 };

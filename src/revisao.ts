@@ -102,7 +102,12 @@ export function preencherIguais(texto: string, m: Marcador, valor: string): stri
  */
 export function aplicarPresenca(ata: AtaRecord, lista: MeetingMetadata['participantes']) {
   const convocados = ata.convocados ?? ata.meta.participantes.map(chaveNome)
-  const participantes = lista.filter(p => p.presente || convocados.includes(chaveNome(p)))
+  const orientado = ata.meta.orientado ? chaveNome(ata.meta.orientado) : null
+  // responsáveis e alunos entram à mão em cada ata (não vêm do cadastro): nunca somem da lista;
+  // o orientado vai em meta.orientado e não pode repetir como participante
+  const participantes = lista.filter(
+    p => chaveNome(p) !== orientado && (p.presente || convocados.includes(chaveNome(p)) || (p.categoria && p.categoria !== 'funcionario')),
+  )
   const r = recalcular(ata, participantes)
   return { ...r, convocados }
 }
@@ -129,8 +134,13 @@ function recalcular(ata: AtaRecord, participantes: MeetingMetadata['participante
 const chaveNome = (p: Pessoa) => p.nome.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('pt-BR').replace(/\s+/g, ' ').trim()
 
 /** Junta pessoas cadastradas com os participantes da ata, sem repetir nomes (ignora caixa, acentos e espaços). */
-export function listaDePresenca(participantes: MeetingMetadata['participantes'], cadastro: Pessoa[], excluir: Pessoa[] = []) {
-  const fora = new Set(excluir.map(chaveNome))
+export function listaDePresenca(
+  participantes: MeetingMetadata['participantes'],
+  cadastro: Pessoa[],
+  excluir: Pessoa[] = [],
+  orientado?: Pessoa,
+) {
+  const fora = new Set([...excluir, ...(orientado ? [orientado] : [])].map(chaveNome))
   const lista = participantes.filter(p => !fora.has(chaveNome(p)))
   const vistos = new Set(lista.map(chaveNome))
   for (const p of cadastro) {
