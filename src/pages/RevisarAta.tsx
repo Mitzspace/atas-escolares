@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { validateAta } from '../ata-api'
+import { listarOrientados, validateAta } from '../ata-api'
 import { patchAta } from '../db'
 import { useAta, useDebouncedEffect, useSettings } from '../hooks'
 import { rotuloDoParticipante } from '../pessoas'
@@ -48,7 +48,7 @@ export default function RevisarAta() {
       ata.meta.participantes,
       // na orientação só vale quem foi informado (o cadastro inteiro não é convocado)
       ata.meta.tipo === 'orientacao' ? [] : settings?.pessoas ?? [],
-      [ata.meta.presidente, ata.meta.secretario, ...(ata.meta.orientado ? [ata.meta.orientado] : [])],
+      [ata.meta.presidente, ata.meta.secretario, ...listarOrientados(ata.meta)],
     ) : []),
     [ata, settings],
   )
@@ -119,14 +119,14 @@ export default function RevisarAta() {
               </label>
             </li>
           ))}
-          {atual.meta.orientado && (
-            <li>
+          {listarOrientados(atual.meta).map((o, i) => (
+            <li key={`orientado${i}`}>
               <label className="flex min-h-12 items-center gap-3 rounded-xl border border-rule bg-slate-50 p-4">
                 <input type="checkbox" className="size-6 shrink-0 accent-blue-900" checked disabled />
-                <span className="min-w-0 break-words"><b className="block text-ink">{atual.meta.orientado.nome}</b><span className="mt-1 block text-slate-600">{rotuloDoParticipante(atual.meta.orientado)}</span><span className="block text-slate-600">(recebeu a orientação)</span></span>
+                <span className="min-w-0 break-words"><b className="block text-ink">{o.nome}</b><span className="mt-1 block text-slate-600">{rotuloDoParticipante(o)}</span><span className="block text-slate-600">(recebeu a orientação)</span></span>
               </label>
             </li>
-          )}
+          ))}
           {lista.map((p, i) => (
             <li key={`${p.nome}|${i}`}>
               <label className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border p-4 transition-colors ${p.presente ? 'border-blue-200 bg-blue-50/50' : 'border-rule bg-slate-50'}`}>
