@@ -38,7 +38,7 @@ export default function NovaAta() {
     getSettings().then(async s => {
       setCfg(s)
       setEscola(s.escola); setRede(s.rede); setMunicipioUf(s.municipioUf); setLocal(s.local)
-      setPresidente(s.presidente); setSecretario(s.secretario); setGlossario(s.glossario)
+      setSecretario(s.secretario); setGlossario(s.glossario)
       setParts(s.pessoas.map(p => ({ ...p, presente: true })))
       setNumero(await proximoNumero(new Date().getFullYear()))
     })
