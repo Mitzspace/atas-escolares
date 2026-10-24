@@ -47,19 +47,19 @@ export default function RevisarTranscricao() {
       <ul className="space-y-3">
         {segs.map((s, i) => (
           <li key={i} className="card space-y-2">
-            <div className="flex items-center justify-between text-sm text-slate-600">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-base text-slate-600">
               <span><b className="text-slate-900">{s.speaker}</b> · {s.start}–{s.end}</span>
-              <button className="px-2 py-1 text-red-700" onClick={() => mudar(segs.filter((_, j) => j !== i))} aria-label="Remover trecho">Remover</button>
+              <button className="btn-danger shrink-0 px-3" onClick={() => mudar(segs.filter((_, j) => j !== i))} aria-label="Remover trecho">Remover</button>
             </div>
             <textarea
-              className="field" rows={Math.max(2, Math.ceil(s.text.length / 45))}
+              aria-label={`Trecho de ${s.speaker}, ${s.start} a ${s.end}`} className="field" rows={Math.max(2, Math.ceil(s.text.length / 45))}
               value={s.text} onChange={e => mudar(segs.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
             />
           </li>
         ))}
       </ul>
 
-      <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white p-3">
+      <div className="action-bar">
         <div className="mx-auto max-w-3xl"><button className="btn-primary w-full" onClick={gerar}>Gerar a ata</button></div>
       </div>
     </div>

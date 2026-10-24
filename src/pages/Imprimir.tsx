@@ -23,19 +23,19 @@ export default function Imprimir() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Imprimir</h1>
+      <div><p className="eyebrow mb-2">DOCUMENTO FINAL</p><h1>Imprimir</h1><p className="mt-3 text-slate-600">Ata nº {ata.meta.numero}/{ata.meta.ano} · {ata.meta.escola}</p></div>
       {erro && <div role="alert" className="card border-red-300 bg-red-50 text-red-800">{erro}</div>}
       {!blob && !erro && <p className="text-slate-500">Gerando o PDF…</p>}
       {blob && (
         <>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="card grid gap-3 sm:grid-cols-2">
             <button className="btn-primary" onClick={async () => {
               if (!(await compartilhar(blob, nome, ata.renderizada!.titulo))) setAviso('Este aparelho não permite compartilhar o arquivo. Use “Baixar PDF”.')
             }}>Compartilhar / imprimir</button>
             <button className="btn-secondary" onClick={() => baixar(blob, nome)}>Baixar PDF</button>
             <a className="btn-secondary sm:col-span-2" href={url} target="_blank" rel="noreferrer">Abrir PDF em outra aba</a>
           </div>
-          {aviso && <p className="text-sm text-amber-800" role="status">{aviso}</p>}
+          {aviso && <p className="card border-amber-300 bg-amber-50 text-amber-900" role="status">{aviso}</p>}
           <iframe title="Pré-visualização do PDF" src={url} className="hidden h-[70vh] w-full rounded-lg border border-slate-300 bg-white md:block" />
         </>
       )}

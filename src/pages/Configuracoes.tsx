@@ -29,7 +29,7 @@ export default function Configuracoes() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold">Configurações</h1>
+      <div><p className="eyebrow mb-2">PREFERÊNCIAS DA ESCOLA</p><h1>Configurações</h1></div>
 
       <section className="card space-y-3">
         <h2 className="font-semibold">Chave do Gemini (grátis)</h2>
@@ -43,8 +43,8 @@ export default function Configuracoes() {
           <button type="button" className="btn-secondary" onClick={() => setVerChave(v => !v)}>{verChave ? 'Ocultar' : 'Ver'}</button>
         </div>
         <div>
-          <label className="label">Modelo</label>
-          <select className="field" value={s.modelo} onChange={e => up({ modelo: e.target.value })}>
+          <label className="label" htmlFor="modelo">Modelo</label>
+          <select id="modelo" className="field" value={s.modelo} onChange={e => up({ modelo: e.target.value })}>
             {MODELOS.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
             {!MODELOS.some(m => m.id === s.modelo) && <option value={s.modelo}>{s.modelo}</option>}
           </select>
@@ -55,29 +55,29 @@ export default function Configuracoes() {
 
       <section className="card space-y-3">
         <h2 className="font-semibold">Escola</h2>
-        <div><label className="label">Nome da escola</label><input className="field" value={s.escola} onChange={e => up({ escola: e.target.value })} /></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><label className="label">Rede</label><input className="field" value={s.rede} onChange={e => up({ rede: e.target.value })} /></div>
-          <div><label className="label">Município/UF</label><input className="field" value={s.municipioUf} onChange={e => up({ municipioUf: e.target.value })} /></div>
+        <div><label className="label" htmlFor="escola">Nome da escola</label><input id="escola" className="field" value={s.escola} onChange={e => up({ escola: e.target.value })} /></div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div><label className="label" htmlFor="rede">Rede</label><input id="rede" className="field" value={s.rede} onChange={e => up({ rede: e.target.value })} /></div>
+          <div><label className="label" htmlFor="municipioUf">Município/UF</label><input id="municipioUf" className="field" value={s.municipioUf} onChange={e => up({ municipioUf: e.target.value })} /></div>
         </div>
-        <div><label className="label">Local habitual das reuniões</label><input className="field" value={s.local} onChange={e => up({ local: e.target.value })} /></div>
+        <div><label className="label" htmlFor="local">Local habitual das reuniões</label><input id="local" className="field" value={s.local} onChange={e => up({ local: e.target.value })} /></div>
         {(['presidente', 'secretario'] as const).map(k => (
-          <div key={k} className="grid grid-cols-2 gap-3">
-            <div><label className="label">{k === 'presidente' ? 'Presidente (padrão)' : 'Secretário(a) (padrão)'}</label><input className="field" value={s[k].nome} onChange={e => up({ [k]: { ...s[k], nome: e.target.value } })} /></div>
-            <div><label className="label">Cargo</label><input className="field" value={s[k].cargo} onChange={e => up({ [k]: { ...s[k], cargo: e.target.value } })} /></div>
+          <div key={k} className="grid gap-4 sm:grid-cols-2">
+            <div><label className="label" htmlFor={`${k}-nome`}>{k === 'presidente' ? 'Presidente (padrão)' : 'Secretário(a) (padrão)'}</label><input id={`${k}-nome`} className="field" value={s[k].nome} onChange={e => up({ [k]: { ...s[k], nome: e.target.value } })} /></div>
+            <div><label className="label" htmlFor={`${k}-cargo`}>Cargo</label><input id={`${k}-cargo`} className="field" value={s[k].cargo} onChange={e => up({ [k]: { ...s[k], cargo: e.target.value } })} /></div>
           </div>
         ))}
-        <div><label className="label">Glossário padrão (um termo por linha)</label><textarea className="field" rows={3} value={s.glossario} onChange={e => up({ glossario: e.target.value })} /></div>
+        <div><label className="label" htmlFor="glossario">Glossário padrão (um termo por linha)</label><textarea id="glossario" className="field" rows={3} value={s.glossario} onChange={e => up({ glossario: e.target.value })} /></div>
       </section>
 
       <section className="card space-y-3">
         <h2 className="font-semibold">Professores e funcionários</h2>
         <p className="text-sm text-slate-600">Aparecem já na lista de participantes de cada nova ata.</p>
         {s.pessoas.map((p, i) => (
-          <div key={i} className="flex gap-2">
-            <input className="field" value={p.nome} placeholder="Nome" onChange={e => up({ pessoas: s.pessoas.map((x, j) => (j === i ? { ...x, nome: e.target.value } : x)) })} />
-            <input className="field" value={p.cargo} placeholder="Cargo" onChange={e => up({ pessoas: s.pessoas.map((x, j) => (j === i ? { ...x, cargo: e.target.value } : x)) })} />
-            <button type="button" className="btn-secondary px-3" aria-label="Remover" onClick={() => up({ pessoas: s.pessoas.filter((_, j) => j !== i) })}>✕</button>
+          <div key={i} className="grid grid-cols-[1fr_auto] gap-3 rounded-xl border border-rule bg-slate-50 p-3 sm:grid-cols-[1fr_1fr_auto]">
+            <input className="field" aria-label={`Nome da pessoa ${i + 1}`} value={p.nome} placeholder="Nome" onChange={e => up({ pessoas: s.pessoas.map((x, j) => (j === i ? { ...x, nome: e.target.value } : x)) })} />
+            <input className="field col-start-1 sm:col-start-auto" aria-label={`Cargo da pessoa ${i + 1}`} value={p.cargo} placeholder="Cargo" onChange={e => up({ pessoas: s.pessoas.map((x, j) => (j === i ? { ...x, cargo: e.target.value } : x)) })} />
+            <button type="button" className="btn-danger col-start-2 row-start-1 sm:col-start-auto sm:row-start-auto px-3" aria-label="Remover" onClick={() => up({ pessoas: s.pessoas.filter((_, j) => j !== i) })}>✕</button>
           </div>
         ))}
         <button type="button" className="btn-secondary w-full" onClick={() => up({ pessoas: [...s.pessoas, { nome: '', cargo: 'Professor(a)' }] })}>＋ Adicionar pessoa</button>

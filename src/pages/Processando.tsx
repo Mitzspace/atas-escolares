@@ -31,21 +31,21 @@ export default function Processando() {
   }, [])
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 pt-4">
       <h1 className="text-xl font-semibold">{etapa === 'ata' ? 'Redigindo a ata' : 'Transcrevendo o áudio'}</h1>
       {erro ? (
         <>
           <div role="alert" className="card border-red-300 bg-red-50 text-red-800">{erro}</div>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <button className="btn-primary flex-1" onClick={() => setTentativa(t => t + 1)}>Tentar de novo</button>
             <Link to="/config" className="btn-secondary flex-1">Configurações</Link>
           </div>
           <Link to="/" className="btn-secondary w-full">Voltar ao início</Link>
         </>
       ) : (
-        <div className="card space-y-3">
-          <p>{rotulo}</p>
-          <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200" role="progressbar" aria-valuenow={Math.round(fracao * 100)} aria-valuemin={0} aria-valuemax={100}>
+        <div className="card space-y-5" aria-live="polite">
+          <div className="flex items-center justify-between gap-3"><p className="font-semibold text-ink">{rotulo}</p><span className="text-slate-600">{Math.round(fracao * 100)}%</span></div>
+          <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200" aria-label="Progresso do processamento" role="progressbar" aria-valuenow={Math.round(fracao * 100)} aria-valuemin={0} aria-valuemax={100}>
             <div className="h-full bg-blue-900 transition-all duration-500" style={{ width: `${Math.max(4, fracao * 100)}%` }} />
           </div>
           <p className="text-sm text-slate-600">
