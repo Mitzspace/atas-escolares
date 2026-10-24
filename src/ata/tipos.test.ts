@@ -275,3 +275,84 @@ describe('prompts por tipo', () => {
     expect(systemInstruction).not.toContain('NÃO use iniciais para ele(a)');
   });
 });
+
+describe('concordância de número e gênero', () => {
+  const sozinha: MeetingMetadata = {
+    ...base,
+    tipo: 'pais',
+    secretario: { nome: 'Maria Souza', cargo: 'Diretora' },
+    participantes: [],
+    anonimizarAlunos: true,
+  };
+  const abertura = (m: MeetingMetadata) => /reuniram-se (.*?), totalizando/.exec(renderAta(m, vazia).texto)![1];
+  const mae = resp('Ana Costa', 'Mãe', 'aluno Pedro Henrique Lima, 5º ano B');
+
+  it('pais: uma funcionária e uma responsável', () => {
+    expect(abertura({ ...sozinha, participantes: [mae] })).toBe(
+      'a funcionária Maria Souza, diretora, e a responsável Ana Costa, mãe do aluno P.H.L., do quinto ano B',
+    );
+  });
+
+  it('pais: um funcionário e um pai', () => {
+    const m = { ...sozinha, presidente: { nome: 'Paulo Reis', cargo: 'Diretor' }, secretario: { nome: 'Paulo Reis', cargo: 'Diretor' } };
+    expect(abertura({ ...m, participantes: [resp('Rui Dias', 'Pai', 'aluna Lia Dias, 2º ano A')] })).toBe(
+      'o funcionário Paulo Reis, diretor, e o responsável Rui Dias, pai da aluna L.D., do segundo ano A',
+    );
+  });
+
+  it('pais: plural feminino só quando todas são mulheres; misto vai para o masculino', () => {
+    const duas = { ...sozinha, participantes: [{ nome: 'Joana Alves', cargo: 'Coordenadora', presente: true }, mae, resp('Lia Reis', 'Mãe', 'aluno Caio Reis, 1º ano A')] };
+    expect(abertura(duas)).toBe(
+      'as funcionárias Maria Souza, diretora e Joana Alves, coordenadora, e as responsáveis Ana Costa, mãe do aluno P.H.L., do quinto ano B e Lia Reis, mãe do aluno C.R., do primeiro ano A',
+    );
+    const misto = { ...sozinha, participantes: [mae, resp('Rui Dias', 'Pai', 'aluna Lia Dias, 2º ano A')] };
+    expect(abertura(misto)).toContain('e os responsáveis Ana Costa');
+    const homem = { ...sozinha, participantes: [{ nome: 'Carlos Mendes', cargo: 'Professor', presente: true }, mae] };
+    expect(abertura(homem)).toMatch(/^os funcionários Maria Souza, diretora e Carlos Mendes, professor, e a responsável Ana Costa/);
+  });
+
+  it('pais: gênero indefinido usa a forma "o(a)"', () => {
+    const m = { ...sozinha, presidente: { nome: 'Lia Mota', cargo: 'Assistente' }, secretario: { nome: 'Lia Mota', cargo: 'Assistente' } };
+    expect(abertura({ ...m, participantes: [resp('Marta Gomes', 'Responsável', 'aluno João Neto, 5º ano B')] })).toBe(
+      'o(a) funcionário(a) Lia Mota, assistente, e o(a) responsável Marta Gomes, responsável pelo aluno J.N., do quinto ano B',
+    );
+  });
+
+  it('pais: aluno presente entra pelo cargo, sem repetir "o aluno"', () => {
+    const aluna: Participante = { nome: 'Lia Dias', cargo: 'Aluna', categoria: 'aluno', vinculo: '2º ano A', presente: true };
+    expect(abertura({ ...sozinha, participantes: [mae, aluna] })).toBe(
+      'a funcionária Maria Souza, diretora, e a responsável Ana Costa, mãe do aluno P.H.L., do quinto ano B, e L.D., aluna do segundo ano A',
+    );
+  });
+
+  it('ausentes: singular e plural, feminino e masculino', () => {
+    const aus = (...ps: Participante[]) => renderAta({ ...base, participantes: ps }, vazia).texto;
+    const f = (n: string): Participante => ({ nome: n, cargo: 'Professora', presente: false });
+    const m = (n: string): Participante => ({ nome: n, cargo: 'Professor', presente: false });
+    expect(aus(f('Ana'))).toContain('Não compareceu a seguinte convocada: Ana, professora.');
+    expect(aus(m('Rui'))).toContain('Não compareceu o seguinte convocado: Rui, professor.');
+    expect(aus(f('Ana'), f('Bia'))).toContain('Não compareceram as seguintes convocadas: Ana, professora e Bia, professora.');
+    expect(aus(f('Ana'), m('Rui'))).toContain('Não compareceram os seguintes convocados: Ana, professora e Rui, professor.');
+  });
+
+  it('orientação: orientada/orientado, acompanhante e ciência concordam com o orientado', () => {
+    const o = (orientado: Participante, acomp: Participante[] = []): MeetingMetadata => ({
+      ...base,
+      tipo: 'orientacao',
+      secretario: base.presidente,
+      participantes: acomp,
+      orientado,
+      pauta: ['Assunto'],
+    });
+    const f = renderAta(o({ nome: 'Carla Dias', cargo: 'Professora', presente: true }), { ...vazia, cienciaOrientado: true }).texto;
+    expect(f).toContain('e a orientada Carla Dias, professora, totalizando');
+    expect(f).toContain('tendo a orientada tomado ciência');
+    const m = renderAta(o({ nome: 'Caio Reis', cargo: 'Aluno', categoria: 'aluno', vinculo: '1º ano A', presente: true }, [resp('Rui Reis', 'Pai', 'aluno Caio Reis, 1º ano A')]), vazia).texto;
+    expect(m).toContain('e o aluno orientado Caio Reis, do primeiro ano A, acompanhado de seu pai, Rui Reis, totalizando');
+    const n = renderAta(o({ nome: 'Lia Mota', cargo: 'Aluno(a)', categoria: 'aluno', vinculo: '1º ano A', presente: true }, [resp('Marta Gomes', 'Responsável', 'aluno Lia Mota, 1º ano A')]), { ...vazia, cienciaOrientado: true }).texto;
+    expect(n).toContain('e o(a) aluno(a) orientado(a) Lia Mota, do primeiro ano A, acompanhado(a) de seu(sua) responsável, Marta Gomes');
+    expect(n).toContain('tendo o(a) orientado(a) tomado ciência');
+    const duplo = renderAta(o({ nome: 'Ana Lima', cargo: 'Aluna', categoria: 'aluno', vinculo: '1º ano A', presente: true }, [resp('Clara Lima', 'Mãe', 'aluna Ana Lima'), resp('Rui Lima', 'Pai', 'aluna Ana Lima')]), vazia).texto;
+    expect(duplo).toContain('acompanhada de sua mãe, Clara Lima e seu pai, Rui Lima');
+  });
+});

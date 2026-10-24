@@ -207,7 +207,7 @@ describe('aplicarPresenca em situações reais', () => {
     expect(r.textoPreservado).toBe(true)
     expect(r.texto).toContain('foi encerrada a reunião às quinze horas e dez minutos, e eu')
     expect(r.texto).toContain('providenciar o regulamento')
-    expect(r.texto).toContain('Não compareceu o seguinte convocado: Joana Alves')
+    expect(r.texto).toContain('Não compareceu a seguinte convocada: Joana Alves')
     expect(listarMarcadores(r.texto).map(m => m.descricao)).toEqual(['prazo do primeiro encaminhamento'])
   })
 
@@ -276,7 +276,7 @@ describe('tipos de ata: categoria, vínculo e orientado', () => {
     expect(r.meta.orientado).toEqual(aluna)
     expect(r.meta.participantes).toEqual([{ ...mae, presente: false }])
     expect(r.texto).toContain('a aluna orientada Ana Lima, do quinto ano B')
-    expect(r.texto).toContain('Não compareceu o seguinte convocado: Clara Lima, mãe da aluna Ana Lima, do quinto ano B.')
+    expect(r.texto).toContain('Não compareceu a seguinte convocada: Clara Lima, mãe da aluna Ana Lima, do quinto ano B.')
     expect(r.renderizada.assinaturas.map(p => p.nome)).toEqual(['Maria Souza', 'Paulo Reis', 'Ana Lima'])
   })
 

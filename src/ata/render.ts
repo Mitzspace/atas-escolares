@@ -173,6 +173,19 @@ function pessoaNoTexto(p: Participante, meta: MeetingMetadata, orientado = false
   return d ? `${nomeNoTexto(p, meta, orientado)}, ${d}` : nomeNoTexto(p, meta, orientado);
 }
 
+/** Gênero do grupo: feminino só se todos forem; misto ou indefinido segue a norma (masculino). */
+const generoDoGrupo = (ps: Participante[]): Genero3 => {
+  const gs = ps.map((p) => generoDoCargo(p.cargo));
+  return gs.every((g) => g === 'f') ? 'f' : gs.length === 1 && gs[0] === 'n' ? 'n' : 'm';
+};
+
+/** "a funcionária" / "o responsável" / "os funcionários" / "as alunas", conforme quantidade e gênero. */
+function chamada(ps: Participante[], n: { m: string; f: string; mp: string; fp: string; neutro: string }): string {
+  const g = generoDoGrupo(ps);
+  if (ps.length === 1) return g === 'f' ? `a ${n.f}` : g === 'n' ? `o(a) ${n.neutro}` : `o ${n.m}`;
+  return g === 'f' ? `as ${n.fp}` : `os ${n.mp}`;
+}
+
 const maiuscula1 = (s: string) => s.charAt(0).toLocaleUpperCase('pt-BR') + s.slice(1);
 
 /** Quem esteve presente, em ordem: presidente, secretário, orientado e demais presentes. */
@@ -272,15 +285,20 @@ function quemSeReuniu(meta: MeetingMetadata, pres: Participante[]): string {
     const resps = pres.filter((p) => categoriaDe(p) === 'responsavel');
     const alunos = pres.filter((p) => categoriaDe(p) === 'aluno');
     const partes: string[] = [];
-    if (funcs.length) partes.push(`os funcionários ${juntarComE(funcs.map((p) => pessoaNoTexto(p, meta)))}`);
+    if (funcs.length) {
+      const nome = chamada(funcs, { m: 'funcionário', f: 'funcionária', mp: 'funcionários', fp: 'funcionárias', neutro: 'funcionário(a)' });
+      partes.push(`${nome} ${juntarComE(funcs.map((p) => pessoaNoTexto(p, meta)))}`);
+    }
     if (usaListaAnexa(meta)) {
       partes.push(
         `${numeroPorExtenso(resps.length)} responsáveis por alunos, cujos nomes constam da lista de presença anexa, que é parte integrante desta ata`,
       );
     } else if (resps.length) {
-      partes.push(`os responsáveis ${juntarComE(resps.map((p) => pessoaNoTexto(p, meta)))}`);
+      const nome = chamada(resps, { m: 'responsável', f: 'responsável', mp: 'responsáveis', fp: 'responsáveis', neutro: 'responsável' });
+      partes.push(`${nome} ${juntarComE(resps.map((p) => pessoaNoTexto(p, meta)))}`);
     }
-    if (alunos.length) partes.push(`os alunos ${juntarComE(alunos.map((p) => pessoaNoTexto(p, meta)))}`);
+    // o cargo já diz "aluno(a) do ...": sem substantivo de grupo para não repetir
+    if (alunos.length) partes.push(juntarComE(alunos.map((p) => pessoaNoTexto(p, meta))));
     return `reuniram-se ${partes.join(', e ')}, totalizando ${total}, ${sob}${quemSecretaria(meta)}para tratar da seguinte pauta: ${listaPauta(meta)}.`;
   }
 
@@ -432,8 +450,11 @@ export function renderAta(meta: MeetingMetadata, extraida: AtaExtraida): AtaRend
   const partes = [abertura(meta, pres)];
   if (aus.length) {
     const lista = juntarComE(aus.map((p) => pessoaNoTexto(p, meta)));
+    const g = generoDoGrupo(aus) === 'f' ? 'f' : 'm';
     partes.push(
-      aus.length === 1 ? `Não compareceu o seguinte convocado: ${lista}.` : `Não compareceram os seguintes convocados: ${lista}.`,
+      aus.length === 1
+        ? `Não compareceu ${g === 'f' ? 'a seguinte convocada' : 'o seguinte convocado'}: ${lista}.`
+        : `Não compareceram ${g === 'f' ? 'as seguintes convocadas' : 'os seguintes convocados'}: ${lista}.`,
     );
   }
   partes.push(...desenvolvimento(meta, extraida).map(comPontoFinal), encerramento(meta, extraida));
