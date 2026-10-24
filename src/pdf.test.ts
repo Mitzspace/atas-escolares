@@ -83,6 +83,8 @@ describe('cargoDaAssinatura', () => {
     const meta = { ...metaBase, participantes: [{ nome: 'Ana Costa', cargo: 'Mãe', presente: true, categoria: 'responsavel' as const, vinculo: 'aluno Pedro Henrique, 5º ano B' }] }
     expect(cargoDaAssinatura({ nome: 'Ana Costa', cargo: 'Mãe' }, meta)).toBe('Mãe do aluno Pedro Henrique, 5º ano B')
     expect(cargoDaAssinatura({ nome: 'Ana Costa', cargo: 'Mãe' }, { ...meta, anonimizarAlunos: true })).toBe('Mãe do aluno P.H., 5º ano B')
+    // cargo já montado pelo renderAta não ganha o vínculo de novo
+    expect(cargoDaAssinatura({ nome: 'Ana Costa', cargo: 'Mãe do aluno P.H., do quinto ano B' }, { ...meta, anonimizarAlunos: true })).toBe('Mãe do aluno P.H., do quinto ano B')
   })
   it('aluno orientado: cargo – turma; não repete se a ata já trouxe', () => {
     const meta = { ...metaBase, tipo: 'orientacao' as const, orientado: { nome: 'João', cargo: 'Aluno(a)', presente: true, categoria: 'aluno' as const, vinculo: '5º ano B' } }

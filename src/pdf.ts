@@ -78,6 +78,8 @@ export function cargoDaAssinatura(p: Pessoa, meta?: MeetingMetadata): string {
   if (!info?.vinculo?.trim() || !info.categoria || info.categoria === 'funcionario') return p.cargo
   const vinculo = meta?.anonimizarAlunos ? vinculoAnonimo(info.vinculo) : info.vinculo
   if (p.cargo.toLocaleLowerCase('pt-BR').includes(vinculo.toLocaleLowerCase('pt-BR'))) return p.cargo
+  // renderAta já devolve o cargo com o vínculo (ex.: 'Mãe do aluno P.H.L., do quinto ano B'): não repetir
+  if (chaveNome(p.cargo) !== chaveNome(info.cargo)) return p.cargo
   return info.categoria === 'responsavel' ? `${p.cargo} do ${vinculo}` : `${p.cargo} – ${vinculo}`
 }
 
