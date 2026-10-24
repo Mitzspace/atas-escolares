@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { validateAta } from '../ata-api'
 import { patchAta } from '../db'
@@ -98,25 +98,25 @@ export default function RevisarAta() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-xl font-semibold">{atual.renderizada!.titulo}</h1>
+      <div><p className="eyebrow mb-2">REVISÃO DO DOCUMENTO</p><h1 className="break-words">{atual.renderizada!.titulo}</h1></div>
       <div className="text-sm text-slate-600">{atual.renderizada!.cabecalho.filter(Boolean).join(' · ')}</div>
 
-      <section className="card space-y-2">
+      <section className="card space-y-4">
         <h2 className="font-semibold">Quem estava presente</h2>
         <p className="text-sm text-slate-600">Marque quem compareceu. A abertura, a lista de ausentes e as assinaturas são refeitas na hora.</p>
-        <ul>
+        <ul className="space-y-3">
           {[{ ...atual.meta.presidente, presente: true, fixo: true }, { ...atual.meta.secretario, presente: true, fixo: true }].map((p, i) => (
             <li key={`fixo${i}`}>
-              <label className="flex min-h-12 items-center gap-3 py-1">
-                <input type="checkbox" className="size-6 shrink-0" checked disabled />
+              <label className="flex min-h-12 items-center gap-3 rounded-xl border border-rule bg-slate-50 p-4">
+                <input type="checkbox" className="size-6 shrink-0 accent-blue-900" checked disabled />
                 <span><b>{p.nome}</b> <span className="text-slate-600">— {p.cargo}</span> <span className="text-xs text-slate-500">({i === 0 ? 'presidiu' : 'lavrou a ata'})</span></span>
               </label>
             </li>
           ))}
           {lista.map((p, i) => (
             <li key={`${p.nome}|${i}`}>
-              <label className="flex min-h-12 cursor-pointer items-center gap-3 py-1">
-                <input type="checkbox" className="size-6 shrink-0" checked={p.presente} onChange={() => alternarPresenca(i)} />
+              <label className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border p-4 transition-colors ${p.presente ? 'border-blue-200 bg-blue-50/50' : 'border-rule bg-slate-50'}`}>
+                <input type="checkbox" className="size-6 shrink-0 accent-blue-900" checked={p.presente} onChange={() => alternarPresenca(i)} />
                 <span><b>{p.nome}</b> <span className="text-slate-600">— {p.cargo}</span></span>
               </label>
             </li>
@@ -134,7 +134,7 @@ export default function RevisarAta() {
       </section>
 
       {marcadores.length > 0 && (
-        <section className="space-y-3">
+        <section className="space-y-4" aria-label="Completar pendências">
           <h2 className="font-semibold">Completar pendências ({marcadores.length})</h2>
           {marcadores.map((m, i) => (
             <CartaoPendencia key={ks[i]} m={m} onPreencher={v => preencher(m, v)} onRemover={() => preencher(m, '')} />
@@ -146,14 +146,14 @@ export default function RevisarAta() {
         <section className="space-y-3">
           {paraConferir.length > 0 && (
             <div className="card border-amber-300 bg-amber-50 text-amber-900">
-              <h2 className="font-semibold">Para conferir</h2>
-              <ul className="mt-1 list-disc space-y-1 pl-5">{paraConferir.map((p, i) => <li key={i}>{p}</li>)}</ul>
+              <h2 className="font-semibold text-amber-900">Para conferir</h2>
+              <ul className="mt-3 list-disc space-y-3 pl-5">{paraConferir.map((p, i) => <li key={i}>{p}</li>)}</ul>
             </div>
           )}
           {problemas.length > 0 && (
             <div className="card border-red-300 bg-red-50 text-red-800" role="alert">
-              <h2 className="font-semibold">Problemas de formato</h2>
-              <ul className="mt-1 list-disc space-y-1 pl-5">{problemas.map((p, i) => <li key={i}>{p}</li>)}</ul>
+              <h2 className="font-semibold text-red-800">Problemas de formato</h2>
+              <ul className="mt-3 list-disc space-y-3 pl-5">{problemas.map((p, i) => <li key={i}>{p}</li>)}</ul>
             </div>
           )}
         </section>
@@ -173,14 +173,14 @@ export default function RevisarAta() {
 
       <section className="card">
         <h2 className="font-semibold">Assinam</h2>
-        <ul className="mt-1 text-sm text-slate-700">
+        <ul className="mt-3 space-y-3 divide-y divide-slate-200 text-base text-slate-700">
           {atual.renderizada!.assinaturas.map((p, i) => <li key={i}>{p.nome} — {p.cargo}</li>)}
         </ul>
       </section>
 
-      <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white p-3">
-        <div className="mx-auto flex max-w-3xl gap-2">
-          <Link to={`/ata/${id}/transcricao`} className="btn-secondary">← Transcrição</Link>
+      <div className="action-bar">
+        <div className="mx-auto flex max-w-3xl gap-2 sm:px-8">
+          <Link to={`/ata/${id}/transcricao`} className="btn-secondary px-3 sm:px-5">← Transcrição</Link>
           <button
             className="btn-primary flex-1"
             onClick={async () => { await patchAta(id, { textoEditado: texto }); nav(`/ata/${id}/imprimir`) }}
@@ -192,16 +192,17 @@ export default function RevisarAta() {
 }
 
 function CartaoPendencia({ m, onPreencher, onRemover }: { m: Marcador; onPreencher: (v: string) => void; onRemover: () => void }) {
+  const campoId = useId()
   const [v, setV] = useState('')
   const removivel = m.tipo !== 'pendente'
   const rotulo = m.tipo === 'inaudivel' ? 'Trecho que não deu para entender' : m.tipo === 'confirmar' ? 'Confirme' : 'Falta informar'
   return (
-    <div className="card space-y-2 border-amber-300 bg-amber-50">
-      <p className="text-xs font-medium uppercase tracking-wide text-amber-800">{rotulo}</p>
-      <p className="text-sm text-slate-600">{m.contexto ? <>“{m.contexto} <span className="font-semibold text-amber-900">[…]</span>”</> : 'No início do texto'}</p>
-      <label className="label text-slate-900">{m.descricao}</label>
+    <div className="card space-y-4 border-amber-300 border-l-4 bg-white">
+      <p className="text-base font-semibold text-amber-900">{rotulo}</p>
+      <p className="rounded-xl border border-rule bg-slate-50 p-3 text-base text-slate-600 break-words">{m.contexto ? <>“{m.contexto} <span className="font-semibold text-amber-900">[…]</span>”</> : 'No início do texto'}</p>
+      <label htmlFor={campoId} className="label text-slate-900">{m.descricao}</label>
       <input
-        className="field" type={m.hora ? 'time' : 'text'} value={v} onChange={e => setV(e.target.value)}
+        id={campoId} className="field" type={m.hora ? 'time' : 'text'} value={v} onChange={e => setV(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter' && v.trim()) onPreencher(v) }}
         aria-label={m.descricao}
       />

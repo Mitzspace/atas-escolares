@@ -86,20 +86,20 @@ export default function NovaAta() {
 
   return (
     <form onSubmit={enviar} className="space-y-6">
-      <h1 className="text-xl font-semibold">Nova ata – Reunião pedagógica</h1>
+      <div><p className="eyebrow mb-2">DADOS DA REUNIÃO</p><h1>Nova ata – Reunião pedagógica</h1></div>
       {!cfg.apiKey.trim() && (
         <div className="card border-amber-300 bg-amber-50 text-amber-900">
           Falta a chave do Gemini. <Link to="/config" className="font-semibold underline">Colar em Configurações</Link>.
         </div>
       )}
 
-      <section className="card space-y-3">
+      <section className="card space-y-5">
         <h2 className="font-semibold">Áudio da reunião</h2>
         <input
           type="file"
           accept={EXTENSOES_AUDIO.map(x => `.${x}`).join(',') + ',audio/*'}
           onChange={e => setAudio(e.target.files?.[0] ?? null)}
-          className="field"
+          aria-label="Áudio da reunião" className="field file:mr-3 file:min-h-11 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:text-blue-900"
         />
         <p className="text-sm text-slate-600">
           mp3, m4a, wav, ogg, webm ou aac. Dica: grave com o gravador do celular e envie o arquivo aqui.
@@ -107,36 +107,36 @@ export default function NovaAta() {
         </p>
       </section>
 
-      <section className="card space-y-3">
+      <section className="card space-y-5">
         <h2 className="font-semibold">Dados da reunião</h2>
-        <div><label className="label">Escola</label><input className="field" value={escola} onChange={e => setEscola(e.target.value)} /></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><label className="label">Rede</label><input className="field" value={rede} onChange={e => setRede(e.target.value)} placeholder="Rede Municipal" /></div>
-          <div><label className="label">Município/UF</label><input className="field" value={municipioUf} onChange={e => setMunicipioUf(e.target.value)} placeholder="Cidade/SP" /></div>
+        <div><label className="label" htmlFor="escola">Escola</label><input id="escola" className="field" value={escola} onChange={e => setEscola(e.target.value)} /></div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div><label className="label" htmlFor="rede">Rede</label><input id="rede" className="field" value={rede} onChange={e => setRede(e.target.value)} placeholder="Rede Municipal" /></div>
+          <div><label className="label" htmlFor="municipioUf">Município/UF</label><input id="municipioUf" className="field" value={municipioUf} onChange={e => setMunicipioUf(e.target.value)} placeholder="Cidade/SP" /></div>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <div><label className="label">Ata nº</label><input className="field" type="number" min={1} value={numero} onChange={e => setNumero(Number(e.target.value))} /></div>
-          <div className="col-span-2"><label className="label">Data</label><input className="field" type="date" value={data} onChange={e => setData(e.target.value)} /></div>
+          <div><label className="label" htmlFor="numero">Ata nº</label><input id="numero" className="field" type="number" min={1} value={numero} onChange={e => setNumero(Number(e.target.value))} /></div>
+          <div className="col-span-2"><label className="label" htmlFor="data">Data</label><input id="data" className="field" type="date" value={data} onChange={e => setData(e.target.value)} /></div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><label className="label">Início</label><input className="field" type="time" value={horaInicio} onChange={e => setHoraInicio(e.target.value)} /></div>
-          <div><label className="label">Término (opcional)</label><input className="field" type="time" value={horaFim} onChange={e => setHoraFim(e.target.value)} /></div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div><label className="label" htmlFor="horaInicio">Início</label><input id="horaInicio" className="field" type="time" value={horaInicio} onChange={e => setHoraInicio(e.target.value)} /></div>
+          <div><label className="label" htmlFor="horaFim">Término (opcional)</label><input id="horaFim" className="field" type="time" value={horaFim} onChange={e => setHoraFim(e.target.value)} /></div>
         </div>
-        <div><label className="label">Local</label><input className="field" value={local} onChange={e => setLocal(e.target.value)} /></div>
-        <label className="flex items-center gap-3 py-1"><input type="checkbox" className="size-5" checked={ordinaria} onChange={e => setOrdinaria(e.target.checked)} /> Reunião ordinária</label>
+        <div><label className="label" htmlFor="local">Local</label><input id="local" className="field" value={local} onChange={e => setLocal(e.target.value)} /></div>
+        <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-rule bg-slate-50 p-3"><input type="checkbox" className="size-6 shrink-0" checked={ordinaria} onChange={e => setOrdinaria(e.target.checked)} /> Reunião ordinária</label>
       </section>
 
-      <section className="card space-y-3">
+      <section className="card space-y-5">
         <h2 className="font-semibold">Presidente e secretário(a)</h2>
         {([['Presidiu a reunião', presidente, setPresidente], ['Lavrou a ata', secretario, setSecretario]] as const).map(([rot, p, set]) => (
-          <div key={rot} className="grid grid-cols-2 gap-3">
-            <div><label className="label">{rot}</label><input className="field" value={p.nome} onChange={e => set({ ...p, nome: e.target.value })} placeholder="Nome" /></div>
-            <div><label className="label">Cargo</label><input className="field" value={p.cargo} onChange={e => set({ ...p, cargo: e.target.value })} /></div>
+          <div key={rot} className="grid gap-4 sm:grid-cols-2">
+            <div><label className="label" htmlFor={`${rot.split(' ')[0]}-nome`}>{rot}</label><input id={`${rot.split(' ')[0]}-nome`} className="field" value={p.nome} onChange={e => set({ ...p, nome: e.target.value })} placeholder="Nome" /></div>
+            <div><label className="label" htmlFor={`${rot.split(' ')[0]}-cargo`}>Cargo</label><input id={`${rot.split(' ')[0]}-cargo`} className="field" value={p.cargo} onChange={e => set({ ...p, cargo: e.target.value })} /></div>
           </div>
         ))}
       </section>
 
-      <section className="card space-y-3">
+      <section className="card space-y-5">
         <h2 className="font-semibold">Participantes</h2>
         <p className="text-sm text-slate-600">Marque quem estava presente. Só os presentes assinam.</p>
         {cfg.pessoas.length === 0 && (
@@ -147,38 +147,38 @@ export default function NovaAta() {
           </p>
         )}
         {parts.map((p, i) => (
-          <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 p-2">
-            <label className="flex min-h-12 shrink-0 cursor-pointer items-center gap-2 pr-2 font-medium">
+          <div key={i} className={`flex flex-wrap items-center gap-3 rounded-xl border p-4 ${p.presente ? 'border-blue-200 bg-blue-50/50' : 'border-rule bg-slate-50'}`}>
+            <label className="flex min-h-12 w-full cursor-pointer items-center gap-3 rounded-lg font-semibold text-ink">
               <input type="checkbox" className="size-6 shrink-0" checked={p.presente} onChange={e => upParte(i, { presente: e.target.checked })} />
               Presente
             </label>
             <input className="field min-w-0 flex-1 basis-40" value={p.nome} onChange={e => upParte(i, { nome: e.target.value })} placeholder="Nome" aria-label="Nome" />
             <input className="field min-w-0 flex-1 basis-32" value={p.cargo} onChange={e => upParte(i, { cargo: e.target.value })} placeholder="Cargo" aria-label="Cargo" />
-            <button type="button" className="btn-secondary min-w-12 px-3" onClick={() => setParts(ps => ps.filter((_, j) => j !== i))} aria-label="Remover participante">✕</button>
+            <button type="button" className="btn-danger min-w-12 px-3" onClick={() => setParts(ps => ps.filter((_, j) => j !== i))} aria-label="Remover participante">✕</button>
           </div>
         ))}
         <button type="button" className="btn-secondary w-full" onClick={() => setParts(ps => [...ps, { nome: '', cargo: 'Professor(a)', presente: true }])}>＋ Adicionar participante</button>
       </section>
 
-      <section className="card space-y-3">
+      <section className="card space-y-5">
         <h2 className="font-semibold">Pauta</h2>
         {pauta.map((x, i) => (
           <div key={i} className="flex gap-2">
-            <input className="field" value={x} onChange={e => setPauta(ps => ps.map((y, j) => (j === i ? e.target.value : y)))} placeholder={`Item ${i + 1}`} />
+            <input aria-label={`Item ${i + 1} da pauta`} className="field" value={x} onChange={e => setPauta(ps => ps.map((y, j) => (j === i ? e.target.value : y)))} placeholder={`Item ${i + 1}`} />
             {pauta.length > 1 && <button type="button" className="btn-secondary px-3" onClick={() => setPauta(ps => ps.filter((_, j) => j !== i))} aria-label="Remover item">✕</button>}
           </div>
         ))}
         <button type="button" className="btn-secondary w-full" onClick={() => setPauta(ps => [...ps, ''])}>＋ Adicionar item</button>
       </section>
 
-      <section className="card space-y-3">
+      <section className="card space-y-5">
         <h2 className="font-semibold">Outras opções</h2>
-        <label className="flex items-center gap-3"><input type="checkbox" className="size-5" checked={anonimizar} onChange={e => setAnonimizar(e.target.checked)} /> Não citar nomes de alunos (usar iniciais)</label>
-        <div><label className="label">Glossário (um termo por linha: siglas, nomes próprios)</label><textarea className="field" rows={3} value={glossario} onChange={e => setGlossario(e.target.value)} /></div>
+        <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-rule bg-slate-50 p-3"><input type="checkbox" className="size-6 shrink-0" checked={anonimizar} onChange={e => setAnonimizar(e.target.checked)} /> Não citar nomes de alunos (usar iniciais)</label>
+        <div><label className="label" htmlFor="glossario">Glossário (um termo por linha: siglas, nomes próprios)</label><textarea id="glossario" className="field" rows={3} value={glossario} onChange={e => setGlossario(e.target.value)} /></div>
       </section>
 
       {erro && <div role="alert" className="card border-red-300 bg-red-50 text-red-800">{erro}</div>}
-      <button className="btn-primary w-full" disabled={salvando}>{salvando ? 'Salvando…' : 'Transcrever o áudio'}</button>
+      <div className="action-bar"><div className="mx-auto max-w-3xl sm:px-8"><button className="btn-primary w-full" disabled={salvando}>{salvando ? 'Salvando…' : 'Transcrever o áudio'}</button></div></div>
     </form>
   )
 }
