@@ -141,3 +141,6 @@ export function listaDePresenca(participantes: MeetingMetadata['participantes'],
   }
   return lista
 }
+
+/** Presidente e secretário(a) são a mesma pessoa? */
+export const mesmaPessoa = (a: Pessoa, b: Pessoa) => chaveNome(a) === chaveNome(b)

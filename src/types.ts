@@ -14,7 +14,6 @@ export type Settings = {
   rede: string
   municipioUf: string
   local: string
-  secretario: Pessoa
   /** professores e funcionários cadastrados (cargo incluso) */
   pessoas: Pessoa[]
   glossario: string
@@ -27,7 +26,6 @@ export const SETTINGS_PADRAO: Settings = {
   rede: '',
   municipioUf: '',
   local: 'sala dos professores',
-  secretario: { nome: '', cargo: 'Secretária' },
   pessoas: [],
   glossario: '',
 }

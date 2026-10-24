@@ -26,6 +26,7 @@ export default function NovaAta() {
   const [local, setLocal] = useState('')
   const [presidente, setPresidente] = useState<Pessoa>({ nome: '', cargo: '' })
   const [secretario, setSecretario] = useState<Pessoa>({ nome: '', cargo: '' })
+  const [mesmaPessoa, setMesmaPessoa] = useState(false)
   const [parts, setParts] = useState<Part[]>([])
   const [pauta, setPauta] = useState<string[]>([''])
   const [anonimizar, setAnonimizar] = useState(true)
@@ -38,7 +39,7 @@ export default function NovaAta() {
     getSettings().then(async s => {
       setCfg(s)
       setEscola(s.escola); setRede(s.rede); setMunicipioUf(s.municipioUf); setLocal(s.local)
-      setSecretario(s.secretario); setGlossario(s.glossario)
+      setGlossario(s.glossario)
       setParts(s.pessoas.map(p => ({ ...p, presente: true })))
       setNumero(await proximoNumero(new Date().getFullYear()))
     })
@@ -53,13 +54,14 @@ export default function NovaAta() {
     try { mimeDoAudio(audio) } catch (x) { return setErro((x as Error).message) }
     if (audio.size > TAMANHO_MAX_MB * 1024 * 1024) return setErro(`O arquivo tem mais de ${TAMANHO_MAX_MB} MB. Envie um áudio menor (ou em mp3/m4a).`)
     if (!escola.trim()) return setErro('Informe o nome da escola.')
-    if (!presidente.nome.trim() || !secretario.nome.trim()) return setErro('Informe quem presidiu a reunião e quem secretariou (lavrou a ata).')
+    const quemLavrou = mesmaPessoa ? presidente : secretario
+    if (!presidente.nome.trim() || !quemLavrou.nome.trim()) return setErro('Informe quem presidiu a reunião e quem secretariou (lavrou a ata).')
     if (!horaInicio) return setErro('Informe a hora de início.')
     const presentes = parts.filter(p => p.nome.trim())
     const meta: MeetingMetadata = {
       escola: escola.trim(), rede: rede.trim(), municipioUf: municipioUf.trim(), tipo: 'pedagogica', ordinaria,
       numero, ano: Number(data.slice(0, 4)), data, horaInicio, horaFim: horaFim || undefined, local: local.trim(),
-      presidente, secretario,
+      presidente, secretario: quemLavrou,
       participantes: presentes.map(p => ({ nome: p.nome.trim(), cargo: p.cargo.trim(), presente: p.presente })),
       pauta: pauta.map(x => x.trim()).filter(Boolean),
       anonimizarAlunos: anonimizar,
@@ -128,12 +130,13 @@ export default function NovaAta() {
 
       <section className="card space-y-5">
         <h2 className="font-semibold">Presidente e secretário(a)</h2>
-        {([['Presidiu a reunião', presidente, setPresidente], ['Lavrou a ata', secretario, setSecretario]] as const).map(([rot, p, set]) => (
+        {([['Presidiu a reunião', presidente, setPresidente], ...(mesmaPessoa ? [] : [['Lavrou a ata', secretario, setSecretario]] as const)] as const).map(([rot, p, set]) => (
           <div key={rot} className="grid gap-4 sm:grid-cols-2">
             <div><label className="label" htmlFor={`${rot.split(' ')[0]}-nome`}>{rot}</label><input id={`${rot.split(' ')[0]}-nome`} className="field" value={p.nome} onChange={e => set({ ...p, nome: e.target.value })} placeholder="Nome" /></div>
             <div><label className="label" htmlFor={`${rot.split(' ')[0]}-cargo`}>Cargo</label><input id={`${rot.split(' ')[0]}-cargo`} className="field" value={p.cargo} onChange={e => set({ ...p, cargo: e.target.value })} /></div>
           </div>
         ))}
+        <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-rule bg-slate-50 p-3"><input type="checkbox" className="size-6 shrink-0" checked={mesmaPessoa} onChange={e => setMesmaPessoa(e.target.checked)} /> Quem presidiu também lavrou a ata</label>
       </section>
 
       <section className="card space-y-5">

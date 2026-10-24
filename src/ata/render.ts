@@ -36,6 +36,9 @@ function pessoaTxt(p: Pessoa): string {
   return p.cargo.trim() ? `${nome}, ${minuscula1(p.cargo)}` : nome;
 }
 
+/** quem presidiu também lavrou a ata */
+const mesmaPessoa = (meta: MeetingMetadata) => normalizar(meta.presidente.nome) === normalizar(meta.secretario.nome);
+
 function tituloSecretario(p: Pessoa): string {
   const w = (p.cargo.trim().split(/\s+/)[0] ?? '').toLocaleLowerCase('pt-BR');
   if (/a$/.test(w)) return 'secretária';
@@ -113,7 +116,9 @@ function abertura(meta: MeetingMetadata, pres: Pessoa[]): string {
     `${dataPorExtenso(meta.data)}, ${horaPorExtenso(meta.horaInicio)}, ${onde}, ${limpar(meta.rede)}, ` +
     `reuniram-se ${juntarComE(pres.map(pessoaTxt))}, totalizando ${total}, ` +
     `sob a presidência de ${pessoaTxt(meta.presidente)}, ` +
-    `comigo, ${limpar(meta.secretario.nome)}, ${tituloSecretario(meta.secretario)}, ` +
+    (mesmaPessoa(meta)
+      ? 'que também secretariou a reunião, '
+      : `comigo, ${limpar(meta.secretario.nome)}, ${tituloSecretario(meta.secretario)}, `) +
     `para tratar da seguinte pauta: ${pauta}.`
   );
 }
@@ -177,7 +182,7 @@ function encerramento(meta: MeetingMetadata): string {
   const fim = meta.horaFim?.trim() ? horaPorExtenso(meta.horaFim) : '[PENDENTE: horário de término da reunião]';
   return (
     `Nada mais havendo a tratar, foi encerrada a reunião ${fim}, e eu, ${limpar(meta.secretario.nome)}, ` +
-    `${tituloSecretario(meta.secretario)}, lavrei a presente ata que, lida e aprovada, será assinada por mim e pelos demais presentes.`
+    `${mesmaPessoa(meta) ? `${meta.presidente.cargo.trim() ? `${minuscula1(meta.presidente.cargo)}, ` : ''}que presidi a reunião` : tituloSecretario(meta.secretario)}, lavrei a presente ata que, lida e aprovada, será assinada por mim e pelos demais presentes.`
   );
 }
 

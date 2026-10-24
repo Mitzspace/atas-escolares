@@ -174,3 +174,19 @@ describe('prompts e schemas', () => {
     expect((ataResponseSchema as { required: string[] }).required).toEqual(['itens', 'deliberacoes', 'encaminhamentos', 'pendencias']);
   });
 });
+
+describe('renderAta: presidente também lavrou a ata', () => {
+  const mesma = { ...meta, secretario: { nome: 'Maria Souza', cargo: 'Diretora' } };
+  const r = renderAta(mesma, extraida);
+
+  it('abertura e encerramento sem repetir a pessoa como "comigo"', () => {
+    expect(r.texto).toContain('sob a presidência de Maria Souza, diretora, que também secretariou a reunião, para tratar');
+    expect(r.texto).not.toContain('comigo');
+    expect(r.texto).toContain('e eu, Maria Souza, diretora, que presidi a reunião, lavrei a presente ata');
+  });
+
+  it('assina uma vez só e passa na validação', () => {
+    expect(r.assinaturas.filter((p) => p.nome === 'Maria Souza')).toHaveLength(1);
+    expect(validateAta(r)).toEqual([]);
+  });
+});

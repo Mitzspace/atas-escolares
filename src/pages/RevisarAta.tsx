@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { validateAta } from '../ata-api'
 import { patchAta } from '../db'
 import { useAta, useDebouncedEffect, useSettings } from '../hooks'
-import { aplicarPresenca, listaDePresenca, listarMarcadores, preencherMarcador, type Marcador } from '../revisao'
+import { aplicarPresenca, listaDePresenca, mesmaPessoa, listarMarcadores, preencherMarcador, type Marcador } from '../revisao'
 import type { AtaRecord } from '../types'
 
 const normalizar = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').trim()
@@ -105,11 +105,11 @@ export default function RevisarAta() {
         <h2 className="font-semibold">Quem estava presente</h2>
         <p className="text-sm text-slate-600">Marque quem compareceu. A abertura, a lista de ausentes e as assinaturas são refeitas na hora.</p>
         <ul className="space-y-3">
-          {[{ ...atual.meta.presidente, presente: true, fixo: true }, { ...atual.meta.secretario, presente: true, fixo: true }].map((p, i) => (
+          {(mesmaPessoa(atual.meta.presidente, atual.meta.secretario) ? [atual.meta.presidente] : [atual.meta.presidente, atual.meta.secretario]).map((p, i) => (
             <li key={`fixo${i}`}>
               <label className="flex min-h-12 items-center gap-3 rounded-xl border border-rule bg-slate-50 p-4">
                 <input type="checkbox" className="size-6 shrink-0 accent-blue-900" checked disabled />
-                <span><b>{p.nome}</b> <span className="text-slate-600">— {p.cargo}</span> <span className="text-xs text-slate-500">({i === 0 ? 'presidiu' : 'lavrou a ata'})</span></span>
+                <span><b>{p.nome}</b> <span className="text-slate-600">— {p.cargo}</span> <span className="text-xs text-slate-500">({mesmaPessoa(atual.meta.presidente, atual.meta.secretario) ? 'presidiu e lavrou a ata' : i === 0 ? 'presidiu' : 'lavrou a ata'})</span></span>
               </label>
             </li>
           ))}

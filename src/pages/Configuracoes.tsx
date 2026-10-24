@@ -61,12 +61,6 @@ export default function Configuracoes() {
           <div><label className="label" htmlFor="municipioUf">Município/UF</label><input id="municipioUf" className="field" value={s.municipioUf} onChange={e => up({ municipioUf: e.target.value })} /></div>
         </div>
         <div><label className="label" htmlFor="local">Local habitual das reuniões</label><input id="local" className="field" value={s.local} onChange={e => up({ local: e.target.value })} /></div>
-        {(['secretario'] as const).map(k => (
-          <div key={k} className="grid gap-4 sm:grid-cols-2">
-            <div><label className="label" htmlFor={`${k}-nome`}>Secretário(a) (padrão)</label><input id={`${k}-nome`} className="field" value={s[k].nome} onChange={e => up({ [k]: { ...s[k], nome: e.target.value } })} /></div>
-            <div><label className="label" htmlFor={`${k}-cargo`}>Cargo</label><input id={`${k}-cargo`} className="field" value={s[k].cargo} onChange={e => up({ [k]: { ...s[k], cargo: e.target.value } })} /></div>
-          </div>
-        ))}
         <div><label className="label" htmlFor="glossario">Glossário padrão (um termo por linha)</label><textarea id="glossario" className="field" rows={3} value={s.glossario} onChange={e => up({ glossario: e.target.value })} /></div>
       </section>
 
