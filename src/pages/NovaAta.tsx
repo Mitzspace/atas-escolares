@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { MeetingMetadata, Pessoa } from '../ata-api'
-import { getSettings, novoId, proximoNumero, saveAta, saveAudio } from '../db'
+import { getSettings, novoId, proximoNumero, saveAta, saveAudio, saveSettings } from '../db'
 import { EXTENSOES_AUDIO, mimeDoAudio } from '../gemini'
 import type { Settings } from '../types'
 
@@ -66,6 +66,16 @@ export default function NovaAta() {
       glossario: glossario.split('\n').map(x => x.trim()).filter(Boolean),
     }
     setSalvando(true)
+    // guarda no cadastro quem foi digitado agora, sem repetir nomes
+    const chave = (n: string) => n.trim().toLocaleLowerCase('pt-BR')
+    const conhecidos = new Set(cfg!.pessoas.map(p => chave(p.nome)))
+    const novos = presentes.filter(p => {
+      const k = chave(p.nome)
+      if (conhecidos.has(k)) return false
+      conhecidos.add(k)
+      return true
+    }).map(p => ({ nome: p.nome.trim(), cargo: p.cargo.trim() }))
+    if (novos.length) await saveSettings({ ...cfg!, pessoas: [...cfg!.pessoas, ...novos] })
     const id = novoId()
     await saveAudio(id, audio)
     await saveAta({ id, criadaEm: Date.now(), atualizadaEm: Date.now(), status: 'rascunho', meta, audioNome: audio.name })
@@ -129,12 +139,22 @@ export default function NovaAta() {
       <section className="card space-y-3">
         <h2 className="font-semibold">Participantes</h2>
         <p className="text-sm text-slate-600">Marque quem estava presente. Só os presentes assinam.</p>
+        {cfg.pessoas.length === 0 && (
+          <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700">
+            Dica: cadastre os professores e funcionários uma vez em{' '}
+            <Link to="/config" className="font-semibold underline">Configurações</Link>{' '}
+            e eles já aparecem aqui. Quem você digitar abaixo também fica guardado para as próximas atas.
+          </p>
+        )}
         {parts.map((p, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <input type="checkbox" className="size-6 shrink-0" checked={p.presente} onChange={e => upParte(i, { presente: e.target.checked })} aria-label="Presente" />
-            <input className="field" value={p.nome} onChange={e => upParte(i, { nome: e.target.value })} placeholder="Nome" />
-            <input className="field" value={p.cargo} onChange={e => upParte(i, { cargo: e.target.value })} placeholder="Cargo" />
-            <button type="button" className="btn-secondary px-3" onClick={() => setParts(ps => ps.filter((_, j) => j !== i))} aria-label="Remover">✕</button>
+          <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 p-2">
+            <label className="flex min-h-12 shrink-0 cursor-pointer items-center gap-2 pr-2 font-medium">
+              <input type="checkbox" className="size-6 shrink-0" checked={p.presente} onChange={e => upParte(i, { presente: e.target.checked })} />
+              Presente
+            </label>
+            <input className="field min-w-0 flex-1 basis-40" value={p.nome} onChange={e => upParte(i, { nome: e.target.value })} placeholder="Nome" aria-label="Nome" />
+            <input className="field min-w-0 flex-1 basis-32" value={p.cargo} onChange={e => upParte(i, { cargo: e.target.value })} placeholder="Cargo" aria-label="Cargo" />
+            <button type="button" className="btn-secondary min-w-12 px-3" onClick={() => setParts(ps => ps.filter((_, j) => j !== i))} aria-label="Remover participante">✕</button>
           </div>
         ))}
         <button type="button" className="btn-secondary w-full" onClick={() => setParts(ps => [...ps, { nome: '', cargo: 'Professor(a)', presente: true }])}>＋ Adicionar participante</button>
