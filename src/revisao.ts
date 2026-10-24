@@ -1,4 +1,4 @@
-import { horaPorExtenso, novoMarcadorRegex, renderAta, textoLivreParaPadrao, type MeetingMetadata, type Pessoa } from './ata-api'
+import { horaPorExtenso, listarOrientados, novoMarcadorRegex, renderAta, textoLivreParaPadrao, type MeetingMetadata, type Pessoa } from './ata-api'
 import type { AtaRecord } from './types'
 
 export type Marcador = {
@@ -102,11 +102,11 @@ export function preencherIguais(texto: string, m: Marcador, valor: string): stri
  */
 export function aplicarPresenca(ata: AtaRecord, lista: MeetingMetadata['participantes']) {
   const convocados = ata.convocados ?? ata.meta.participantes.map(chaveNome)
-  const orientado = ata.meta.orientado ? chaveNome(ata.meta.orientado) : null
+  const orientados = listarOrientados(ata.meta).map(chaveNome)
   // responsáveis e alunos entram à mão em cada ata (não vêm do cadastro): nunca somem da lista;
-  // o orientado vai em meta.orientado e não pode repetir como participante
+  // os orientados ficam em meta.orientados (ou meta.orientado, nas atas antigas) e não podem repetir como participante
   const participantes = lista.filter(
-    p => chaveNome(p) !== orientado && (p.presente || convocados.includes(chaveNome(p)) || (p.categoria && p.categoria !== 'funcionario')),
+    p => !orientados.includes(chaveNome(p)) && (p.presente || convocados.includes(chaveNome(p)) || (p.categoria && p.categoria !== 'funcionario')),
   )
   const r = recalcular(ata, participantes)
   return { ...r, convocados }
@@ -138,9 +138,9 @@ export function listaDePresenca(
   participantes: MeetingMetadata['participantes'],
   cadastro: Pessoa[],
   excluir: Pessoa[] = [],
-  orientado?: Pessoa,
+  orientado?: Pessoa | Pessoa[],
 ) {
-  const fora = new Set([...excluir, ...(orientado ? [orientado] : [])].map(chaveNome))
+  const fora = new Set([...excluir, ...(Array.isArray(orientado) ? orientado : orientado ? [orientado] : [])].map(chaveNome))
   const lista = participantes.filter(p => !fora.has(chaveNome(p)))
   const vistos = new Set(lista.map(chaveNome))
   for (const p of cadastro) {

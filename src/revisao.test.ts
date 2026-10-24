@@ -304,3 +304,36 @@ describe('tipos de ata: categoria, vínculo e orientado', () => {
     expect(r.texto).toContain('Não compareceu o seguinte convocado: Carlos Mendes, professor')
   })
 })
+
+describe('vários orientados', () => {
+  const al = (nome: string, turma: string) => ({ nome, cargo: 'Aluna', categoria: 'aluno' as const, vinculo: turma, presente: true })
+  const prof = { nome: 'Carlos Mendes', cargo: 'Professor', presente: true }
+  const mae = { nome: 'Clara Lima', cargo: 'Mãe', categoria: 'responsavel' as const, vinculo: 'aluna Ana Lima, 5º ano B', presente: true }
+  const registro = (): AtaRecord => {
+    const m: MeetingMetadata = { ...meta, tipo: 'orientacao', pauta: ['Faltas'], orientados: [al('Ana Lima', '5º ano B'), prof], participantes: [mae] }
+    const e = { ...extraida, orientacoes: ['A diretora orientou os presentes.'] }
+    return { id: 'v', criadaEm: 0, atualizadaEm: 0, status: 'ata', meta: m, extraida: e, renderizada: renderAta(m, e) }
+  }
+
+  it('os orientados ficam fixos, não duplicam e não viram ausentes', () => {
+    const r = aplicarPresenca(registro(), [{ ...mae, presente: false }, { ...prof, presente: false }, { nome: 'Ana Lima', cargo: 'Aluna', presente: false }])
+    expect(r.meta.orientados?.map(o => o.nome)).toEqual(['Ana Lima', 'Carlos Mendes'])
+    expect(r.meta.participantes.map(p => p.nome)).toEqual(['Clara Lima'])
+    expect(r.renderizada.assinaturas.map(a => a.nome)).toEqual(['Maria Souza', 'Paulo Reis', 'Ana Lima', 'Carlos Mendes'])
+    expect(r.texto).toContain('Não compareceu a seguinte convocada: Clara Lima')
+  })
+
+  it('listaDePresenca aceita lista de orientados', () => {
+    const l = listaDePresenca([mae], [{ nome: 'Ana Lima', cargo: 'Aluna' }, { nome: 'carlos mendes', cargo: 'Professor' }, { nome: 'Rui Lopes', cargo: 'Professor' }], [], [al('Ana Lima', '5º ano B'), prof])
+    expect(l.map(p => p.nome)).toEqual(['Clara Lima', 'Rui Lopes'])
+  })
+
+  it('ata antiga com meta.orientado continua funcionando', () => {
+    const a = registro()
+    a.meta = { ...a.meta, orientados: undefined, orientado: al('Ana Lima', '5º ano B') }
+    a.renderizada = renderAta(a.meta, a.extraida!)
+    const r = aplicarPresenca(a, [{ ...mae, presente: false }])
+    expect(r.meta.orientado?.nome).toBe('Ana Lima')
+    expect(r.renderizada.assinaturas.map(x => x.nome)).toEqual(['Maria Souza', 'Paulo Reis', 'Ana Lima'])
+  })
+})

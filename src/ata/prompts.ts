@@ -1,18 +1,21 @@
 import { iniciais, parseVinculo } from './render';
-import type { MeetingMetadata, Participante, TipoAta, TranscriptSegment } from './types';
+import { listarOrientados, type MeetingMetadata, type Participante, type TipoAta, type TranscriptSegment } from './types';
 
 const dataBr = (iso: string) => iso.split('-').reverse().join('/');
 const tipoDe = (meta: MeetingMetadata): TipoAta => meta.tipo ?? 'pedagogica';
 const ehAluno = (p: Participante) => p.categoria === 'aluno';
 const mesmoNome = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+const ehOrientado = (meta: MeetingMetadata, nome: string) => listarOrientados(meta).some((o) => mesmoNome(o.nome, nome));
 
 function descreverContexto(meta: MeetingMetadata): string {
   const tipo = tipoDe(meta);
   const onde = `${meta.escola} (${meta.rede}), ${meta.municipioUf}, em ${dataBr(meta.data)}, local: ${meta.local || 'não informado'}`;
   if (tipo === 'pais') return `Reunião de pais e responsáveis da ${onde}.`;
   if (tipo === 'orientacao') {
-    const o = meta.orientado;
-    const quem = o ? `${o.categoria === 'aluno' ? 'aluno(a)' : 'funcionário(a)'} ${o.nome}` : 'orientado(a) não informado(a)';
+    const os = listarOrientados(meta);
+    const quem = os.length
+      ? os.map((o) => `${o.categoria === 'aluno' ? 'aluno(a)' : 'funcionário(a)'} ${o.nome}`).join('; ')
+      : 'orientado(a) não informado(a)';
     return `Orientação a ${quem}, conduzida por ${meta.presidente.nome}${meta.presidente.cargo ? ` (${meta.presidente.cargo})` : ''}, na ${onde}.`;
   }
   return `Reunião pedagógica ${meta.ordinaria ? 'ordinária' : 'extraordinária'} da ${onde}.`;
@@ -30,13 +33,13 @@ function pessoas(meta: MeetingMetadata, anonimizar: boolean): string[] {
     const k = p.nome.trim().toLowerCase();
     if (!k || vistos.has(k)) return;
     vistos.add(k);
-    const orientado = !!meta.orientado && mesmoNome(p.nome, meta.orientado.nome);
+    const orientado = ehOrientado(meta, p.nome);
     const nome = anonimizar && ehAluno(p) && !orientado ? iniciais(p.nome) : p.nome;
     let extra = '';
     if (p.categoria === 'responsavel' && p.vinculo?.trim()) {
       const v = parseVinculo(p.vinculo);
       extra = v
-        ? `; vínculo: ${v.rotulo} ${anonimizar && !(meta.orientado && mesmoNome(meta.orientado.nome, v.nome)) ? iniciais(v.nome) : v.nome}${v.turma ? `, ${v.turma}` : ''}`
+        ? `; vínculo: ${v.rotulo} ${anonimizar && !ehOrientado(meta, v.nome) ? iniciais(v.nome) : v.nome}${v.turma ? `, ${v.turma}` : ''}`
         : `; vínculo: ${p.vinculo}`;
     } else if (ehAluno(p) && p.vinculo?.trim()) {
       extra = `; turma: ${p.vinculo}`;
@@ -45,7 +48,7 @@ function pessoas(meta: MeetingMetadata, anonimizar: boolean): string[] {
   };
   add({ ...meta.presidente, presente: true }, tipo === 'orientacao' ? ' (conduz a orientação)' : ' (presidente da reunião)');
   add({ ...meta.secretario, presente: true }, ' (secretário(a) da reunião)');
-  if (meta.orientado) add(meta.orientado, ' (orientado(a))');
+  for (const o of listarOrientados(meta)) add(o, ' (orientado(a))');
   for (const p of meta.participantes) add(p, p.presente ? '' : ' (ausente)');
   return linhas;
 }
@@ -112,10 +115,10 @@ Quando alunos participaram da reunião, registre o que disseram atribuindo a fal
 - Omita "orientacoes" e "cienciaOrientado".`,
   orientacao: `O QUE PRODUZIR
 - "itens": um relato por assunto da pauta (os assuntos da orientação), na ordem, com "pauta" = número do assunto (começando em 1; 0 = outro assunto). Cada "relato" começa com "No primeiro assunto," (segundo, terceiro...; para pauta 0, "Em outros assuntos,") e narra o motivo e os fatos relatados, sempre atribuindo a quem relatou ("segundo a coordenadora Maria Souza, ..."), sem tomar partido e sem adjetivar a pessoa orientada.
-- "manifestacoes": o que o(a) orientado(a) e quem o(a) acompanha disseram (versão dos fatos, concordância, discordância, pedidos), um item por manifestação, atribuindo a fala.
-- "orientacoes": cada orientação dada pelo orientador, um item por orientação, como "o orientador orientou que...".
+- "manifestacoes": o que cada orientado e quem o acompanha disseram (versão dos fatos, concordância, discordância, pedidos), um item por manifestação, atribuindo a fala ao orientado certo, pelo nome.
+- "orientacoes": cada orientação dada pelo orientador, um item por orientação, como "o orientador orientou que...". Pode haver mais de um orientado: quando a orientação foi dada a todos, escreva "orientou os presentes que..."; quando foi individual, diga a quem ("orientou o aluno Fulano que..."). Nunca atribua a um orientado o que foi dito a outro.
 - "encaminhamentos": combinados, com "acao", "responsavel" e "prazo" somente se ditos.
-- "cienciaOrientado": true SOMENTE se a transcrição mostra que o(a) orientado(a) disse ter entendido, concordado ou estar ciente das orientações; do contrário false (nunca presuma).
+- "cienciaOrientado": true SOMENTE se a transcrição mostra que o(a) orientado(a) disse ter entendido, concordado ou estar ciente das orientações; do contrário false (nunca presuma). Havendo vários orientados, true apenas se TODOS demonstraram ciência; se só alguns, deixe false e registre em "pendencias" quem não demonstrou (ex.: "ciência do aluno Fulano").
 - "deliberacoes": use apenas se houve uma decisão formal; em geral deixe [].
 - "pendencias": a descrição de cada marcação [PENDENTE: ...], [trecho inaudível] ou [confirmar: ...] que você usou nos textos.`,
 };
@@ -151,15 +154,15 @@ ALUNOS
 const ANON_ORIENTACAO_SIM = `
 
 ALUNOS (anonimização ATIVA)
-- O(A) orientado(a) é o assunto desta ata: escreva o nome dele(a) normalmente, NÃO use iniciais para ele(a).
-- Substitua pelas iniciais em maiúsculas separadas por ponto (ex.: "o aluno J.P.S.") o nome de qualquer OUTRO aluno citado (colegas, envolvidos). Nunca escreva o nome completo de outro aluno, nem em "pendencias".
+- Os orientados são o assunto desta ata: escreva o nome de cada um normalmente, NÃO use iniciais para nenhum deles.
+- Substitua pelas iniciais em maiúsculas separadas por ponto (ex.: "o aluno J.P.S.") o nome de qualquer OUTRO aluno citado que não seja um dos orientados (colegas, envolvidos). Nunca escreva o nome completo de outro aluno, nem em "pendencias".
 - Não registre dados de saúde, diagnósticos, laudos ou situação familiar além do estritamente necessário ao motivo da orientação.
 - Funcionários, responsáveis e o orientador mantêm o nome normalmente.`;
 
 const ANON_ORIENTACAO_NAO = `
 
 ALUNOS
-- O(A) orientado(a) é o assunto desta ata e pode ser citado(a) pelo nome. Cite outros alunos apenas quando indispensável. Não registre dados de saúde, laudos ou situações familiares sensíveis além do necessário ao motivo da orientação.`;
+- Os orientados são o assunto desta ata e podem ser citados pelo nome. Cite outros alunos apenas quando indispensável. Não registre dados de saúde, laudos ou situações familiares sensíveis além do necessário ao motivo da orientação.`;
 
 function anonimizacao(meta: MeetingMetadata): string {
   if (tipoDe(meta) === 'orientacao') return meta.anonimizarAlunos ? ANON_ORIENTACAO_SIM : ANON_ORIENTACAO_NAO;

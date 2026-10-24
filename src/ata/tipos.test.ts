@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderAta, usaListaAnexa } from './render';
 import { validateAta } from './validate';
 import { buildAtaPrompt, buildTranscriptionPrompt } from './prompts';
-import { TIPOS_ATA, type AtaExtraida, type MeetingMetadata, type Participante } from './types';
+import { TIPOS_ATA, listarOrientados, type AtaExtraida, type MeetingMetadata, type Participante } from './types';
 
 const base: MeetingMetadata = {
   escola: 'Escola Municipal Professora Ana Lima',
@@ -260,7 +260,7 @@ describe('prompts por tipo', () => {
   it('orientação: não anonimiza o orientado, mas anonimiza outros alunos', () => {
     const meta: MeetingMetadata = { ...base, tipo: 'orientacao', anonimizarAlunos: true, orientado: aluna, participantes: [colega] };
     const { systemInstruction, userPrompt } = buildAtaPrompt(meta, []);
-    expect(systemInstruction).toContain('NÃO use iniciais para ele(a)');
+    expect(systemInstruction).toContain('NÃO use iniciais para nenhum deles');
     expect(systemInstruction).toContain('cienciaOrientado');
     expect(userPrompt).toContain('Ana Lima — Aluna; turma: 5º ano B (orientado(a))');
     expect(userPrompt).toContain('P.L. — Aluno');
@@ -272,7 +272,7 @@ describe('prompts por tipo', () => {
     const { systemInstruction } = buildAtaPrompt({ ...base, anonimizarAlunos: true }, []);
     expect(systemInstruction).toContain('reunião pedagógica');
     expect(systemInstruction).toContain('anonimização ATIVA');
-    expect(systemInstruction).not.toContain('NÃO use iniciais para ele(a)');
+    expect(systemInstruction).not.toContain('NÃO use iniciais para nenhum deles');
   });
 });
 
@@ -354,5 +354,140 @@ describe('concordância de número e gênero', () => {
     expect(n).toContain('tendo o(a) orientado(a) tomado ciência');
     const duplo = renderAta(o({ nome: 'Ana Lima', cargo: 'Aluna', categoria: 'aluno', vinculo: '1º ano A', presente: true }, [resp('Clara Lima', 'Mãe', 'aluna Ana Lima'), resp('Rui Lima', 'Pai', 'aluna Ana Lima')]), vazia).texto;
     expect(duplo).toContain('acompanhada de sua mãe, Clara Lima e seu pai, Rui Lima');
+  });
+});
+
+describe('orientação com vários orientados', () => {
+  const aluno = (nome: string, turma: string, cargo = 'Aluna'): Participante => ({ nome, cargo, categoria: 'aluno', vinculo: turma, presente: true });
+  const prof = (nome: string, cargo: string): Participante => ({ nome, cargo, presente: true });
+  const mae = (nome: string, filha: string, turma: string): Participante => resp(nome, 'Mãe', `aluna ${filha}, ${turma}`);
+  const orient = (orientados: Participante[], participantes: Participante[] = []): MeetingMetadata => ({
+    ...base,
+    tipo: 'orientacao',
+    secretario: base.presidente,
+    pauta: ['Faltas'],
+    anonimizarAlunos: true,
+    orientados,
+    participantes,
+  });
+  const ext: AtaExtraida = {
+    ...vazia,
+    itens: [{ pauta: 1, relato: 'No primeiro assunto, a diretora relatou as faltas.' }],
+    orientacoes: ['A diretora orientou os presentes.'],
+    cienciaOrientado: true,
+  };
+  const abre = (m: MeetingMetadata) => /reuniram-se (.*?), para tratar de orientação/.exec(renderAta(m, ext).texto)![1];
+
+  it('um aluno (lista com um item) = comportamento anterior', () => {
+    const m = orient([aluno('Ana Lima', '5º ano B')], [mae('Clara Lima', 'Ana Lima', '5º ano B')]);
+    expect(renderAta(m, ext).titulo).toBe('ATA Nº 004/2026 – ORIENTAÇÃO A ALUNO');
+    expect(abre(m)).toBe('Maria Souza, diretora, e a aluna orientada Ana Lima, do quinto ano B, acompanhada de sua mãe, Clara Lima, totalizando três presentes');
+  });
+
+  it('dois alunos, cada um com o seu responsável', () => {
+    const m = orient(
+      [aluno('Ana Lima', '5º ano B'), aluno('Pedro Souza', '5º ano C', 'Aluno')],
+      [mae('Clara Lima', 'Ana Lima', '5º ano B'), resp('Rui Souza', 'Pai', 'aluno Pedro Souza, 5º ano C')],
+    );
+    const r = renderAta(m, ext);
+    expect(r.titulo).toBe('ATA Nº 004/2026 – ORIENTAÇÃO A ALUNOS');
+    expect(abre(m)).toBe(
+      'Maria Souza, diretora, e os alunos orientados Ana Lima, do quinto ano B, acompanhada de sua mãe, Clara Lima; e Pedro Souza, do quinto ano C, acompanhado de seu pai, Rui Souza, totalizando cinco presentes',
+    );
+    expect(r.texto).toContain('tendo os orientados tomado ciência das orientações');
+    expect(r.assinaturas.map((a) => a.nome)).toEqual(['Maria Souza', 'Ana Lima', 'Pedro Souza', 'Clara Lima', 'Rui Souza']);
+    expect(r.assinaturas[1].cargo).toBe('Aluna do quinto ano B (orientada)');
+    expect(r.assinaturas[2].cargo).toBe('Aluno do quinto ano C (orientado)');
+    expect(validateAta(r)).toEqual([]);
+  });
+
+  it('nenhum orientado é anonimizado, nem no vínculo do responsável; outros alunos sim', () => {
+    const m = orient(
+      [aluno('Ana Lima', '5º ano B'), aluno('Pedro Souza', '5º ano C', 'Aluno')],
+      [mae('Clara Lima', 'Ana Lima', '5º ano B'), resp('Zeca Dias', 'Pai', 'aluno Caio Dias, 5º ano A'), aluno('Beto Reis', '5º ano A', 'Aluno')],
+    );
+    const t = renderAta(m, ext).texto;
+    expect(renderAta(m, ext).assinaturas.find((a) => a.nome === 'Clara Lima')?.cargo).toBe('Mãe da aluna Ana Lima, do quinto ano B');
+    expect(t).toContain('pai do aluno C.D.');
+    expect(t).toContain('B.R., aluno do quinto ano A');
+    expect(t).not.toContain('Caio Dias');
+  });
+
+  it('responsável sem vínculo reconhecido aparece como presente, não como acompanhante de ninguém', () => {
+    const m = orient([aluno('Ana Lima', '5º ano B'), aluno('Pedro Souza', '5º ano C', 'Aluno')], [resp('Zeca Dias', 'Pai', 'aluno Caio Dias, 5º ano A')]);
+    expect(abre(m)).toContain('e ainda Zeca Dias, pai do aluno C.D., do quinto ano A');
+  });
+
+  it('nomes no começo de frase do modelo não são minusculizados', () => {
+    const m = orient([aluno('Ana Lima', '5º ano B')]);
+    const t = renderAta(m, { ...ext, manifestacoes: ['Maria Souza disse que sim.'], orientacoes: ['Enviar bilhete.', 'A diretora orientou x.'] }).texto;
+    expect(t).toContain('manifestações do orientado e de quem o acompanhou: Maria Souza disse que sim.');
+    expect(t).toContain('orientações: Enviar bilhete; a diretora orientou x'.replace('Enviar', 'enviar').replace('orientações: ', 'orientações: primeira, ').replace('; a', '; segunda, a'));
+  });
+
+  it('dois funcionários (e duas funcionárias)', () => {
+    const m = orient([prof('Carlos Mendes', 'Professor'), prof('Rui Lopes', 'Professor')]);
+    expect(renderAta(m, ext).titulo).toBe('ATA Nº 004/2026 – ORIENTAÇÃO A FUNCIONÁRIOS');
+    expect(abre(m)).toBe('Maria Souza, diretora, e os orientados Carlos Mendes, professor; e Rui Lopes, professor, totalizando três presentes');
+    const f = orient([prof('Carla Dias', 'Professora'), prof('Bia Reis', 'Auxiliar da sala')]);
+    expect(abre(f)).toContain('e os orientados Carla Dias');
+    const so = orient([prof('Carla Dias', 'Professora'), prof('Bia Souza', 'Professora')]);
+    expect(abre(so)).toContain('e as orientadas Carla Dias, professora; e Bia Souza, professora');
+    expect(renderAta(so, ext).texto).toContain('tendo as orientadas tomado ciência');
+  });
+
+  it('misto: alunos e funcionários', () => {
+    const m = orient([prof('Carlos Mendes', 'Professor'), aluno('Ana Lima', '5º ano B')], [mae('Clara Lima', 'Ana Lima', '5º ano B')]);
+    const r = renderAta(m, ext);
+    expect(r.titulo).toBe('ATA Nº 004/2026 – ORIENTAÇÃO A ALUNOS E FUNCIONÁRIOS');
+    expect(abre(m)).toBe(
+      'Maria Souza, diretora, e a aluna orientada Ana Lima, do quinto ano B, acompanhada de sua mãe, Clara Lima, e o orientado Carlos Mendes, professor, totalizando quatro presentes',
+    );
+    expect(r.assinaturas.map((a) => a.nome)).toEqual(['Maria Souza', 'Carlos Mendes', 'Ana Lima', 'Clara Lima']);
+    expect(validateAta(r)).toEqual([]);
+  });
+
+  it('ciência: pendência no plural, e horário pendente fala em orientação', () => {
+    const m = { ...orient([aluno('Ana Lima', '5º ano B'), aluno('Bia Reis', '5º ano B')]), horaFim: undefined };
+    const r = renderAta(m, { ...ext, cienciaOrientado: false });
+    expect(r.texto).toContain('[PENDENTE: ciência dos orientados]');
+    expect(r.texto).toContain('[PENDENTE: horário de término da orientação]');
+    expect(r.pendencias).toEqual(expect.arrayContaining(['ciência dos orientados', 'horário de término da orientação']));
+    expect(renderAta({ ...m, orientados: [aluno('Ana Lima', '5º ano B')] }, { ...ext, cienciaOrientado: false }).texto).toContain('[PENDENTE: ciência do orientado]');
+  });
+
+  it('manifestações no plural', () => {
+    const m = orient([aluno('Ana Lima', '5º ano B'), aluno('Bia Reis', '5º ano B')]);
+    expect(renderAta(m, { ...ext, manifestacoes: ['Ana Lima concordou.'] }).texto).toContain('manifestações dos orientados e de quem os acompanhou: Ana Lima concordou');
+  });
+
+  it('ata antiga com o campo orientado continua igual', () => {
+    const antiga: MeetingMetadata = { ...base, tipo: 'orientacao', secretario: base.presidente, pauta: ['Faltas'], participantes: [], orientado: aluno('Ana Lima', '5º ano B') };
+    const r = renderAta(antiga, ext);
+    expect(r.titulo).toBe('ATA Nº 004/2026 – ORIENTAÇÃO A ALUNO');
+    expect(r.texto).toContain('e a aluna orientada Ana Lima, do quinto ano B, totalizando');
+    expect(listarOrientados(antiga)).toEqual([antiga.orientado]);
+    expect(listarOrientados({ ...antiga, orientados: [prof('X', 'Professor')] })).toHaveLength(1);
+    expect(listarOrientados(base)).toEqual([]);
+  });
+
+  it('validação exige assinatura de todos os orientados', () => {
+    const r = renderAta(orient([aluno('Ana Lima', '5º ano B'), aluno('Bia Reis', '5º ano B')]), ext);
+    expect(validateAta(r)).toEqual([]);
+    const nenhum = { ...r, assinaturas: [r.assinaturas[0]] };
+    expect(validateAta(nenhum).some((x) => x.includes('duas assinaturas'))).toBe(true);
+  });
+
+  it('prompts: nenhum orientado é anonimizado e a ciência é coletiva', () => {
+    const m = orient([aluno('Ana Lima', '5º ano B'), aluno('Pedro Souza', '5º ano C', 'Aluno')], [aluno('Beto Reis', '5º ano A', 'Aluno')]);
+    const { systemInstruction, userPrompt } = buildAtaPrompt(m, []);
+    expect(systemInstruction).toContain('NÃO use iniciais para nenhum deles');
+    expect(systemInstruction).toContain('TODOS demonstraram ciência');
+    expect(systemInstruction).toContain('Nunca atribua a um orientado o que foi dito a outro');
+    expect(userPrompt).toContain('Ana Lima — Aluna; turma: 5º ano B (orientado(a))');
+    expect(userPrompt).toContain('Pedro Souza — Aluno; turma: 5º ano C (orientado(a))');
+    expect(userPrompt).toContain('B.R. — Aluno');
+    expect(userPrompt).not.toContain('Beto Reis');
+    expect(buildTranscriptionPrompt(m)).toContain('aluno(a) Ana Lima; aluno(a) Pedro Souza');
   });
 });

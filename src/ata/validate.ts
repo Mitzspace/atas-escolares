@@ -80,7 +80,11 @@ export function validateAta(r: AtaRenderizada): string[] {
     }
     if (!/ci[êe]ncia/i.test(texto)) problemas.push('Falta o registro da ciência do orientado (ou a marcação [PENDENTE: ciência do orientado]).');
     if (!/orienta[çc][õo]es/i.test(texto)) problemas.push('Não há registro das orientações dadas.');
-    if (r.assinaturas.length < 2) problemas.push('A orientação deve ter ao menos duas assinaturas: quem orienta e o orientado.');
+    // as linhas de assinatura dos orientados trazem "(orientado)"/"(orientada)"; é preciso quem orienta + todos eles
+    const orientados = r.assinaturas.filter((a) => /orientad/i.test(a.cargo)).length;
+    if (r.assinaturas.length < 2 || orientados < 1 || r.assinaturas.length < 1 + orientados) {
+      problemas.push('A orientação deve ter ao menos duas assinaturas: quem orienta e todos os orientados.');
+    }
   } else if (/PAIS E RESPONS[ÁA]VEIS/i.test(r.titulo)) {
     if (!/respons[áa]ve(?:l|is)/i.test(texto)) problemas.push('Reunião de pais sem registro dos responsáveis presentes.');
     if (r.assinaturas.length < 2) problemas.push('Reunião de pais sem assinaturas de responsáveis.');

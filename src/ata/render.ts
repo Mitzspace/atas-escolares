@@ -1,4 +1,4 @@
-import { TIPOS_ATA, type AtaExtraida, type AtaRenderizada, type Categoria, type MeetingMetadata, type Participante, type Pessoa, type TipoAta } from './types';
+import { TIPOS_ATA, listarOrientados, type AtaExtraida, type AtaRenderizada, type Categoria, type MeetingMetadata, type Participante, type Pessoa, type TipoAta } from './types';
 import { dataPorExtenso, horaPorExtenso, numeroPorExtenso, ordinalPorExtenso } from './extenso';
 import { textoLivreParaPadrao } from './numeros';
 import { extrairMarcadores } from './validate';
@@ -24,6 +24,27 @@ function minuscula1(s: string): string {
   if (!/^[A-ZÀ-Ý][a-zà-ÿ]*$/.test(primeira)) return t;
   return t.charAt(0).toLocaleLowerCase('pt-BR') + t.slice(1);
 }
+
+const ABERTURAS_DE_FRASE = new Set(
+  ('a o as os um uma uns umas no na nos nas ao aos à às em para por pelo pela com sem sobre após durante segundo conforme quanto ' +
+    'também ainda todos todas cada esse essa este esta foi ficou houve será serão foram ficaram nenhum nenhuma alguns algumas ' +
+    'dois duas três quando como se que e mas porém então assim além depois antes nesse nessa neste nesta').split(' '),
+);
+const NOMES_EM_AR_ER_IR = new Set(['cesar', 'omar', 'samir', 'amir', 'pilar', 'aguiar', 'elcir']);
+
+/** Minúscula na primeira palavra de uma frase do modelo, mas só se for artigo, preposição, verbo etc. — nunca um nome próprio. */
+function minusculaFrase(s: string): string {
+  const t = limpar(s);
+  const w = t.split(' ')[0] ?? '';
+  if (!/^[A-ZÀ-Ý][a-zà-ÿ]*$/.test(w)) return t;
+  const lw = w.toLocaleLowerCase('pt-BR');
+  const verbo = (/^[a-zà-ÿ]{3,}(ar|er|ir|or)$/.test(lw) && !NOMES_EM_AR_ER_IR.has(lw)) || /^[a-zà-ÿ]{2,}(ou|eu|iu|aram|eram|iram)$/.test(lw);
+  return ABERTURAS_DE_FRASE.has(lw) || verbo ? lw + t.slice(w.length) : t;
+}
+
+/** Itens com vírgulas internas (nome, turma, responsável): separados por ponto e vírgula, com "e" antes do último. */
+const juntarItens = (itens: string[]) =>
+  itens.length <= 1 ? (itens[0] ?? '') : `${itens.slice(0, -1).join('; ')}; e ${itens[itens.length - 1]}`;
 
 function juntarComE(itens: string[]): string {
   if (itens.length <= 1) return itens[0] ?? '';
@@ -137,7 +158,7 @@ function vinculoTxt(p: Participante, meta: MeetingMetadata, preposicao: 'de' | '
   const prep =
     preposicao === 'de' ? flexao(g, 'do', 'da', 'do(a)') : flexao(g, 'pelo', 'pela', 'pelo(a)');
   // o aluno orientado é o assunto da ata: não se anonimiza
-  const anonimizar = meta.anonimizarAlunos && !(meta.orientado && normalizar(meta.orientado.nome) === normalizar(v.nome));
+  const anonimizar = meta.anonimizarAlunos && !listarOrientados(meta).some((o) => normalizar(o.nome) === normalizar(v.nome));
   const nome = anonimizar ? iniciais(v.nome) : limpar(v.nome);
   return `${prep} ${v.rotulo} ${nome}${v.turma ? `, ${turmaTxt(v.turma)}` : ''}`;
 }
@@ -200,7 +221,7 @@ function presentes(meta: MeetingMetadata): Participante[] {
   };
   add({ ...meta.presidente, presente: true });
   add({ ...meta.secretario, presente: true });
-  if (meta.orientado) add(meta.orientado);
+  listarOrientados(meta).forEach(add);
   meta.participantes.filter((p) => p.presente).forEach(add);
   return lista;
 }
@@ -222,7 +243,7 @@ export function usaListaAnexa(meta: MeetingMetadata): boolean {
 }
 
 const ehOrientado = (meta: MeetingMetadata, p: Participante) =>
-  !!meta.orientado && normalizar(p.nome) === normalizar(meta.orientado.nome);
+  listarOrientados(meta).some((o) => normalizar(o.nome) === normalizar(p.nome));
 
 function listaPauta(meta: MeetingMetadata): string {
   return meta.pauta.length
@@ -255,28 +276,52 @@ function quemSeReuniu(meta: MeetingMetadata, pres: Participante[]): string {
 
   if (tipo === 'orientacao') {
     const orientador = pessoaNoTexto({ ...meta.presidente, presente: true }, meta);
-    const o = meta.orientado;
-    const g = o ? generoDoCargo(o.cargo) : 'n';
-    const artigo = flexao(g, 'o', 'a', 'o(a)');
-    const quem = o
-      ? categoriaDe(o) === 'aluno'
-        ? `${artigo} ${flexao(g, 'aluno', 'aluna', 'aluno(a)')} ${flexao(g, 'orientado', 'orientada', 'orientado(a)')} ${limpar(o.nome)}${o.vinculo?.trim() ? `, ${turmaTxt(o.vinculo)}` : ''}`
-        : `${artigo} ${flexao(g, 'orientado', 'orientada', 'orientado(a)')} ${pessoaNoTexto(o, meta, true)}`
+    const orientados = listarOrientados(meta);
+    const responsaveis = pres.filter((p) => categoriaDe(p) === 'responsavel');
+    // com um só orientado, todo responsável o acompanha; com vários, cada responsável acompanha o aluno do seu vínculo
+    const acompanhantesDe = (o: Participante) =>
+      orientados.length === 1
+        ? responsaveis
+        : responsaveis.filter((r) => {
+            const v = parseVinculo(r.vinculo ?? '');
+            return !!v && normalizar(v.nome) === normalizar(o.nome);
+          });
+    const acompanhados = new Set<string>();
+    const itemOrientado = (o: Participante, g: Genero3) => {
+      const acomp = acompanhantesDe(o);
+      acomp.forEach((r) => acompanhados.add(normalizar(r.nome)));
+      const acompTxt = acomp.length
+        ? `, ${flexao(g, 'acompanhado', 'acompanhada', 'acompanhado(a)')} de ${juntarComE(acomp.map((r) => acompanhante(r)))}`
+        : '';
+      const base = categoriaDe(o) === 'aluno' ? `${limpar(o.nome)}${o.vinculo?.trim() ? `, ${turmaTxt(o.vinculo)}` : ''}` : pessoaNoTexto(o, meta, true);
+      return `${base}${acompTxt}`;
+    };
+    const grupo = (os: Participante[], aluno: boolean): string => {
+      const g = generoDoGrupo(os);
+      const itens = os.map((o) => itemOrientado(o, generoDoCargo(o.cargo)));
+      if (os.length === 1) {
+        const art = flexao(g, 'o', 'a', 'o(a)');
+        const orientado = flexao(g, 'orientado', 'orientada', 'orientado(a)');
+        return aluno ? `${art} ${flexao(g, 'aluno', 'aluna', 'aluno(a)')} ${orientado} ${itens[0]}` : `${art} ${orientado} ${itens[0]}`;
+      }
+      const f = g === 'f';
+      return `${f ? 'as' : 'os'} ${aluno ? (f ? 'alunas' : 'alunos') + ' ' : ''}${f ? 'orientadas' : 'orientados'} ${juntarItens(itens)}`;
+    };
+    const alunos = orientados.filter((o) => categoriaDe(o) === 'aluno');
+    const funcs = orientados.filter((o) => categoriaDe(o) !== 'aluno');
+    const quem = orientados.length
+      ? [alunos.length ? grupo(alunos, true) : '', funcs.length ? grupo(funcs, false) : ''].filter(Boolean).join(', e ')
       : '[PENDENTE: pessoa orientada]';
-    const acomp = pres.filter((p) => categoriaDe(p) === 'responsavel');
-    const acompTxt = acomp.length
-      ? `, ${flexao(g, 'acompanhado', 'acompanhada', 'acompanhado(a)')} de ${juntarComE(acomp.map((p) => acompanhante(p)))}`
-      : '';
     const outros = pres.filter(
       (p) =>
-        categoriaDe(p) !== 'responsavel' &&
+        !(categoriaDe(p) === 'responsavel' && acompanhados.has(normalizar(p.nome))) &&
         !ehOrientado(meta, p) &&
         normalizar(p.nome) !== normalizar(meta.presidente.nome) &&
         !(normalizar(p.nome) === normalizar(meta.secretario.nome)),
     );
     const outrosTxt = outros.length ? `, e ainda ${juntarComE(outros.map((p) => pessoaNoTexto(p, meta)))}` : '';
     const sec = mesmaPessoa(meta) ? '' : `, ${quemSecretaria(meta).replace(/, $/, '')}`;
-    return `reuniram-se ${orientador}, e ${quem}${acompTxt}${outrosTxt}${sec}, totalizando ${total}, para tratar de orientação sobre: ${listaPauta(meta)}.`;
+    return `reuniram-se ${orientador}, e ${quem}${outrosTxt}${sec}, totalizando ${total}, para tratar de orientação sobre: ${listaPauta(meta)}.`;
   }
 
   const sob = `sob a presidência de ${pessoaTxt(meta.presidente)}, `;
@@ -353,9 +398,10 @@ function desenvolvimento(meta: MeetingMetadata, extraida: AtaExtraida): string[]
   }
   if (!total && !extras.length) partes.push('[PENDENTE: desenvolvimento da reunião]');
 
-  const manifest = (extraida.manifestacoes ?? []).filter((m) => limpar(m)).map((m) => minuscula1(semPontoFinal(m)));
+  const manifest = (extraida.manifestacoes ?? []).filter((m) => limpar(m)).map((m) => minusculaFrase(semPontoFinal(m)));
   if (manifest.length && tipo !== 'pedagogica') {
-    const quem = tipo === 'pais' ? 'dos responsáveis' : 'do orientado e de quem o acompanhou';
+    const varios = listarOrientados(meta).length > 1;
+    const quem = tipo === 'pais' ? 'dos responsáveis' : varios ? 'dos orientados e de quem os acompanhou' : 'do orientado e de quem o acompanhou';
     partes.push(
       tipo === 'pais'
         ? `Os responsáveis apresentaram as seguintes dúvidas e demandas: ${enumerar(manifest)}`
@@ -364,7 +410,7 @@ function desenvolvimento(meta: MeetingMetadata, extraida: AtaExtraida): string[]
   }
 
   if (orient) {
-    const ors = (extraida.orientacoes ?? []).filter((o) => limpar(o)).map((o) => minuscula1(semPontoFinal(o)));
+    const ors = (extraida.orientacoes ?? []).filter((o) => limpar(o)).map((o) => minusculaFrase(semPontoFinal(o)));
     partes.push(
       ors.length
         ? `Foram dadas as seguintes orientações: ${enumerar(ors)}`
@@ -375,7 +421,7 @@ function desenvolvimento(meta: MeetingMetadata, extraida: AtaExtraida): string[]
   const delibs = extraida.deliberacoes.filter((d) => limpar(d.texto));
   if (delibs.length) {
     const lista = delibs.map((d) => {
-      const base = minuscula1(semPontoFinal(d.texto));
+      const base = minusculaFrase(semPontoFinal(d.texto));
       const voto = d.votacao && limpar(d.votacao) ? ` (${semPontoFinal(d.votacao)})` : '';
       return `${base}${voto}`;
     });
@@ -392,7 +438,7 @@ function desenvolvimento(meta: MeetingMetadata, extraida: AtaExtraida): string[]
       const ord = ordinalPorExtenso(i + 1);
       const quem = e.responsavel && limpar(e.responsavel) ? semPontoFinal(e.responsavel) : `[PENDENTE: responsável pelo ${ord} ${orient ? 'combinado' : 'encaminhamento'}]`;
       const prazo = e.prazo && limpar(e.prazo) ? semPontoFinal(e.prazo) : `[PENDENTE: prazo do ${ord} ${orient ? 'combinado' : 'encaminhamento'}]`;
-      const base = `${minuscula1(semPontoFinal(e.acao))}, a cargo ${aCargoDe(quem)}, prazo: ${prazo}`;
+      const base = `${minusculaFrase(semPontoFinal(e.acao))}, a cargo ${aCargoDe(quem)}, prazo: ${prazo}`;
       return encs.length === 1 ? base : `${ord}, ${base}`;
     });
     const um = orient ? 'Como combinado, ficou definido' : 'Como encaminhamento, ficou definido';
@@ -404,16 +450,24 @@ function desenvolvimento(meta: MeetingMetadata, extraida: AtaExtraida): string[]
 
 function encerramento(meta: MeetingMetadata, extraida: AtaExtraida): string {
   const orient = tipoDe(meta) === 'orientacao';
-  const fim = meta.horaFim?.trim() ? horaPorExtenso(meta.horaFim) : '[PENDENTE: horário de término da reunião]';
+  const fim = meta.horaFim?.trim()
+    ? horaPorExtenso(meta.horaFim)
+    : `[PENDENTE: horário de término da ${orient ? 'orientação' : 'reunião'}]`;
   const quemLavrou = mesmaPessoa(meta)
     ? `${meta.presidente.cargo.trim() ? `${minuscula1(meta.presidente.cargo)}, ` : ''}que presidi a reunião`
     : tituloSecretario(meta.secretario);
   let ciencia = '';
   if (orient) {
-    const g = meta.orientado ? generoDoCargo(meta.orientado.cargo) : 'n';
+    const os = listarOrientados(meta);
+    const plural = os.length > 1;
+    const g = os.length ? generoDoGrupo(os) : 'n';
+    const quem = plural
+      ? g === 'f' ? 'as orientadas' : 'os orientados'
+      : flexao(g, 'o orientado', 'a orientada', 'o(a) orientado(a)');
+    // com vários orientados, cienciaOrientado vale para todos
     ciencia = extraida.cienciaOrientado === true
-      ? `, tendo ${flexao(g, 'o orientado', 'a orientada', 'o(a) orientado(a)')} tomado ciência das orientações`
-      : ', [PENDENTE: ciência do orientado]';
+      ? `, tendo ${quem} tomado ciência das orientações`
+      : `, [PENDENTE: ciência ${plural ? 'dos orientados' : 'do orientado'}]`;
   }
   return (
     `Nada mais havendo a tratar, foi encerrada a ${orient ? 'orientação' : 'reunião'} ${fim}${ciencia}, e eu, ${limpar(meta.secretario.nome)}, ` +
@@ -426,7 +480,14 @@ function tituloDoc(meta: MeetingMetadata): string {
   const base = TIPOS_ATA[tipo].titulo;
   let nome: string;
   if (tipo === 'pedagogica') nome = `${base} ${meta.ordinaria ? 'ORDINÁRIA' : 'EXTRAORDINÁRIA'}`;
-  else if (tipo === 'orientacao') nome = `${base} A ${meta.orientado ? (categoriaDe(meta.orientado) === 'aluno' ? 'ALUNO' : 'FUNCIONÁRIO') : ''}`.trim();
+  else if (tipo === 'orientacao') {
+    const os = listarOrientados(meta);
+    const al = os.filter((o) => categoriaDe(o) === 'aluno').length;
+    const fu = os.length - al;
+    const partes = [al ? (al > 1 ? 'ALUNOS' : 'ALUNO') : '', fu ? (fu > 1 ? 'FUNCIONÁRIOS' : 'FUNCIONÁRIO') : ''];
+    // misto: sempre no plural
+    nome = `${base}${os.length ? ` A ${al && fu ? 'ALUNOS E FUNCIONÁRIOS' : partes.filter(Boolean).join('')}` : ''}`;
+  }
   else nome = base;
   return `ATA Nº ${String(meta.numero).padStart(3, '0')}/${meta.ano} – ${nome}`;
 }
