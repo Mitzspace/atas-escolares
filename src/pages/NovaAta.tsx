@@ -13,6 +13,8 @@ type Part = Pessoa & { presente: boolean }
 type Aluno = { nome: string; turma: string; foco?: boolean }
 type Responsavel = { nome: string; parentesco: Parentesco; aluno: string; turma: string; foco?: boolean }
 type Parentesco = 'Mãe' | 'Pai' | 'Responsável'
+/** quem recebe a orientação; aluno pode ter um responsável acompanhando */
+type Orientado = { id: number; tipo: 'funcionario' | 'aluno'; nome: string; cargo: string; turma: string; respNome: string; respParentesco: Parentesco; foco?: boolean }
 const PARENTESCOS: Parentesco[] = ['Mãe', 'Pai', 'Responsável']
 const TIPOS: TipoAta[] = ['pedagogica', 'pais', 'orientacao']
 const chaveNome = (n: string) => n.trim().toLocaleLowerCase('pt-BR')
@@ -39,10 +41,7 @@ export default function NovaAta() {
   const [parts, setParts] = useState<Part[]>([])
   const [alunos, setAlunos] = useState<Aluno[]>([])
   const [responsaveis, setResponsaveis] = useState<Responsavel[]>([])
-  const [orientadoTipo, setOrientadoTipo] = useState<'funcionario' | 'aluno'>('funcionario')
-  const [orientadoFunc, setOrientadoFunc] = useState<Pessoa>({ nome: '', cargo: '' })
-  const [orientadoAluno, setOrientadoAluno] = useState<Aluno>({ nome: '', turma: '' })
-  const [acompanhante, setAcompanhante] = useState<{ nome: string; parentesco: Parentesco }>({ nome: '', parentesco: 'Mãe' })
+  const [orientados, setOrientados] = useState<Orientado[]>([])
   const [pauta, setPauta] = useState<string[]>([''])
   const [anonimizar, setAnonimizar] = useState(true)
   const [glossario, setGlossario] = useState('')
@@ -63,6 +62,8 @@ export default function NovaAta() {
 
   const upParte = (i: number, patch: Partial<Part>) => setParts(ps => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)))
   const upAluno = (i: number, patch: Partial<Aluno>) => setAlunos(as => as.map((a, j) => (j === i ? { ...a, ...patch } : a)))
+  const upOrient = (id: number, patch: Partial<Orientado>) => setOrientados(os => os.map(o => (o.id === id ? { ...o, ...patch } : o)))
+  const addOrient = (tipo: Orientado['tipo']) => setOrientados(os => [...os, { id: Math.max(0, ...os.map(o => o.id)) + 1, tipo, nome: '', cargo: '', turma: '', respNome: '', respParentesco: 'Mãe', foco: true }])
   const upResp = (i: number, patch: Partial<Responsavel>) => setResponsaveis(rs => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
 
   function escolherTipo(t: TipoAta) {
@@ -86,8 +87,10 @@ export default function NovaAta() {
       : 'Informe quem presidiu a reunião e quem secretariou (lavrou a ata).')
     if (!horaInicio) return setErro('Informe a hora de início.')
     if (tipo === 'orientacao') {
-      if (orientadoTipo === 'funcionario' && (!orientadoFunc.nome.trim() || !orientadoFunc.cargo.trim())) return setErro('Informe o nome e o cargo do funcionário que recebe a orientação.')
-      if (orientadoTipo === 'aluno' && !orientadoAluno.nome.trim()) return setErro('Informe o nome do aluno que recebe a orientação.')
+      if (!orientados.length) return setErro('Adicione pelo menos uma pessoa que recebe a orientação.')
+      const func = orientados.find(o => o.tipo === 'funcionario' && (!o.nome.trim() || !o.cargo.trim()))
+      if (func) return setErro('Informe o nome e o cargo de cada funcionário que recebe a orientação.')
+      if (orientados.some(o => o.tipo === 'aluno' && !o.nome.trim())) return setErro('Informe o nome de cada aluno que recebe a orientação.')
     }
 
     const funcionarios: Participante[] = tipo === 'orientacao' ? [] : parts.filter(p => p.nome.trim())
@@ -99,14 +102,16 @@ export default function NovaAta() {
     if (tipo === 'pais') {
       for (const r of responsaveis.filter(r => r.nome.trim())) extras.push({ nome: r.nome.trim(), cargo: r.parentesco, presente: true, categoria: 'responsavel', vinculo: vinculoDoResponsavel(r.aluno, r.turma) })
     }
-    let orientado: Participante | undefined
+    const listaOrientados: Participante[] = []
     if (tipo === 'orientacao') {
-      if (orientadoTipo === 'funcionario') {
-        orientado = { nome: orientadoFunc.nome.trim(), cargo: orientadoFunc.cargo.trim(), presente: true, categoria: 'funcionario' }
-      } else {
-        orientado = { nome: orientadoAluno.nome.trim(), cargo: 'Aluno(a)', presente: true, categoria: 'aluno', vinculo: orientadoAluno.turma.trim() }
-        if (acompanhante.nome.trim()) {
-          extras.push({ nome: acompanhante.nome.trim(), cargo: acompanhante.parentesco, presente: true, categoria: 'responsavel', vinculo: vinculoDoResponsavel(orientadoAluno.nome, orientadoAluno.turma) })
+      for (const o of orientados) {
+        if (o.tipo === 'funcionario') {
+          listaOrientados.push({ nome: o.nome.trim(), cargo: o.cargo.trim(), presente: true, categoria: 'funcionario' })
+        } else {
+          listaOrientados.push({ nome: o.nome.trim(), cargo: 'Aluno(a)', presente: true, categoria: 'aluno', vinculo: o.turma.trim() })
+          if (o.respNome.trim()) {
+            extras.push({ nome: o.respNome.trim(), cargo: o.respParentesco, presente: true, categoria: 'responsavel', vinculo: vinculoDoResponsavel(o.nome, o.turma) })
+          }
         }
       }
     }
@@ -115,14 +120,14 @@ export default function NovaAta() {
       numero, ano: Number(data.slice(0, 4)), data, horaInicio, horaFim: horaFim || undefined, local: local.trim(),
       presidente, secretario: quemLavrou,
       participantes: [...funcionarios, ...extras],
-      ...(orientado ? { orientado } : {}),
+      ...(listaOrientados.length ? { orientados: listaOrientados } : {}),
       pauta: pauta.map(x => x.trim()).filter(Boolean),
       anonimizarAlunos: anonimizar,
       glossario: glossario.split('\n').map(x => x.trim()).filter(Boolean),
     }
     setSalvando(true)
     // só funcionários entram no cadastro (responsáveis e alunos são digitados a cada ata)
-    const candidatos: Pessoa[] = [...funcionarios, ...(orientado?.categoria === 'funcionario' ? [orientado] : [])]
+    const candidatos: Pessoa[] = [...funcionarios, ...listaOrientados.filter(o => o.categoria === 'funcionario')]
     const conhecidos = new Set(cfg!.pessoas.map(p => chaveNome(p.nome)))
     const novos = candidatos.filter(p => {
       const k = chaveNome(p.nome)
@@ -218,45 +223,53 @@ export default function NovaAta() {
       {ehOrientacao && (
         <section className="card space-y-5">
           <h2 className="font-semibold">Quem recebe a orientação</h2>
-          <div className="grid grid-cols-2 gap-2" role="group" aria-label="Quem recebe a orientação">
-            {([['funcionario', 'Funcionário'], ['aluno', 'Aluno']] as const).map(([v, rot]) => (
-              <button key={v} type="button" aria-pressed={orientadoTipo === v} onClick={() => setOrientadoTipo(v)} className={orientadoTipo === v ? 'btn-primary' : 'btn-secondary'}>{rot}</button>
-            ))}
-          </div>
-          {orientadoTipo === 'funcionario' ? (
-            <div className="space-y-4">
-              {cfg.pessoas.length > 0 && (
-                <div>
-                  <label className="label" htmlFor="orientado-cadastro">Escolher do cadastro</label>
-                  <select
-                    id="orientado-cadastro" className="field" value=""
-                    onChange={e => { const p = cfg.pessoas[Number(e.target.value)]; if (p) setOrientadoFunc({ nome: p.nome, cargo: p.cargo }) }}
-                  >
-                    <option value="">Selecione…</option>
-                    {cfg.pessoas.map((p, i) => <option key={i} value={i}>{p.nome} — {p.cargo}</option>)}
-                  </select>
-                </div>
+          <p className="text-sm text-slate-600">Pode ser mais de uma pessoa, funcionários e alunos juntos. Todos assinam.</p>
+          {orientados.map((o, n) => (
+            <div key={o.id} className="person-card space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-semibold">{n + 1}. {o.tipo === 'funcionario' ? 'Funcionário' : 'Aluno'}</p>
+                <button type="button" className="btn-danger" onClick={() => setOrientados(os => os.filter(x => x.id !== o.id))} aria-label={`Remover orientado ${n + 1}`}>Remover</button>
+              </div>
+              {o.tipo === 'funcionario' ? (
+                <>
+                  {cfg.pessoas.length > 0 && (
+                    <div>
+                      <label className="label" htmlFor={`orientado-cadastro-${o.id}`}>Escolher do cadastro</label>
+                      <select
+                        id={`orientado-cadastro-${o.id}`} className="field" value=""
+                        onChange={e => { const p = cfg.pessoas[Number(e.target.value)]; if (p) upOrient(o.id, { nome: p.nome, cargo: p.cargo }) }}
+                      >
+                        <option value="">Selecione…</option>
+                        {cfg.pessoas.map((p, i) => <option key={i} value={i}>{p.nome} — {p.cargo}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div><label className="label" htmlFor={`orientado-nome-${o.id}`}>Nome</label><input id={`orientado-nome-${o.id}`} className="field" autoFocus={o.foco} autoComplete="off" value={o.nome} onChange={e => upOrient(o.id, { nome: e.target.value })} /></div>
+                    <div><label className="label" htmlFor={`orientado-cargo-${o.id}`}>Cargo</label><input id={`orientado-cargo-${o.id}`} className="field" autoComplete="off" value={o.cargo} onChange={e => upOrient(o.id, { cargo: e.target.value })} placeholder="Professor(a), Inspetor(a)…" /></div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div><label className="label" htmlFor={`aluno-nome-${o.id}`}>Nome do aluno</label><input id={`aluno-nome-${o.id}`} className="field" autoFocus={o.foco} autoComplete="off" value={o.nome} onChange={e => upOrient(o.id, { nome: e.target.value })} /></div>
+                    <div><label className="label" htmlFor={`aluno-turma-${o.id}`}>Turma</label><input id={`aluno-turma-${o.id}`} className="field" autoComplete="off" value={o.turma} onChange={e => upOrient(o.id, { turma: e.target.value })} placeholder="5º ano B" /></div>
+                  </div>
+                  <div className="space-y-3 rounded-xl border border-rule p-4">
+                    <p className="font-semibold">Responsável presente (opcional)</p>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div><label className="label" htmlFor={`acomp-nome-${o.id}`}>Nome</label><input id={`acomp-nome-${o.id}`} className="field" autoComplete="off" value={o.respNome} onChange={e => upOrient(o.id, { respNome: e.target.value })} /></div>
+                      <div><label className="label" htmlFor={`acomp-par-${o.id}`}>Parentesco</label><select id={`acomp-par-${o.id}`} className="field" value={o.respParentesco} onChange={e => upOrient(o.id, { respParentesco: e.target.value as Parentesco })}>{PARENTESCOS.map(x => <option key={x}>{x}</option>)}</select></div>
+                    </div>
+                  </div>
+                </>
               )}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div><label className="label" htmlFor="orientado-nome">Nome</label><input id="orientado-nome" className="field" autoComplete="off" value={orientadoFunc.nome} onChange={e => setOrientadoFunc({ ...orientadoFunc, nome: e.target.value })} /></div>
-                <div><label className="label" htmlFor="orientado-cargo">Cargo</label><input id="orientado-cargo" className="field" autoComplete="off" value={orientadoFunc.cargo} onChange={e => setOrientadoFunc({ ...orientadoFunc, cargo: e.target.value })} placeholder="Professor(a), Inspetor(a)…" /></div>
-              </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div><label className="label" htmlFor="aluno-nome">Nome do aluno</label><input id="aluno-nome" className="field" autoComplete="off" value={orientadoAluno.nome} onChange={e => setOrientadoAluno({ ...orientadoAluno, nome: e.target.value })} /></div>
-                <div><label className="label" htmlFor="aluno-turma">Turma</label><input id="aluno-turma" className="field" autoComplete="off" value={orientadoAluno.turma} onChange={e => setOrientadoAluno({ ...orientadoAluno, turma: e.target.value })} placeholder="5º ano B" /></div>
-              </div>
-              <div className="person-card">
-                <p className="font-semibold">Responsável presente (opcional)</p>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div><label className="label" htmlFor="acomp-nome">Nome</label><input id="acomp-nome" className="field" autoComplete="off" value={acompanhante.nome} onChange={e => setAcompanhante({ ...acompanhante, nome: e.target.value })} /></div>
-                  <div><label className="label" htmlFor="acomp-par">Parentesco</label><select id="acomp-par" className="field" value={acompanhante.parentesco} onChange={e => setAcompanhante({ ...acompanhante, parentesco: e.target.value as Parentesco })}>{PARENTESCOS.map(x => <option key={x}>{x}</option>)}</select></div>
-                </div>
-              </div>
-            </div>
-          )}
+          ))}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button type="button" className="btn-secondary" onClick={() => addOrient('funcionario')}>＋ Adicionar funcionário</button>
+            <button type="button" className="btn-secondary" onClick={() => addOrient('aluno')}>＋ Adicionar aluno</button>
+          </div>
         </section>
       )}
 
@@ -337,7 +350,7 @@ export default function NovaAta() {
       <section className="card space-y-5">
         <h2 className="font-semibold">{ehOrientacao ? 'Motivo e assuntos da orientação' : 'Pauta'}</h2>
         <AssuntosSugeridos
-          sugestoes={assuntosSugeridos(chavesDeAssuntos(tipo, ehOrientacao ? [orientadoTipo] : []), cfg.assuntosExtras)}
+          sugestoes={assuntosSugeridos(chavesDeAssuntos(tipo, ehOrientacao ? orientados.map(o => o.tipo) : []), cfg.assuntosExtras)}
           pauta={pauta} onChange={setPauta}
         />
         {pauta.map((x, i) => (
