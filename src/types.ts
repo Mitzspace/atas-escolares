@@ -1,3 +1,4 @@
+import type { AssuntosExtras } from './assuntos'
 import type { AtaExtraida, AtaRenderizada, MeetingMetadata, Pessoa, TranscriptSegment } from './ata-api'
 
 export const MODELOS = [
@@ -17,6 +18,8 @@ export type Settings = {
   /** professores e funcionários cadastrados (cargo incluso) */
   pessoas: Pessoa[]
   glossario: string
+  /** assuntos próprios da escola, somados às sugestões padrão de cada tipo de ata */
+  assuntosExtras: AssuntosExtras
 }
 
 export const SETTINGS_PADRAO: Settings = {
@@ -28,6 +31,7 @@ export const SETTINGS_PADRAO: Settings = {
   local: 'sala dos professores',
   pessoas: [],
   glossario: '',
+  assuntosExtras: {},
 }
 
 export type AtaStatus = 'rascunho' | 'processando' | 'transcricao' | 'ata' | 'erro'

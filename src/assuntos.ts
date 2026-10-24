@@ -84,3 +84,42 @@ export function assuntosSugeridos(chaves: ChaveAssuntos[], extras: Partial<Recor
   }
   return out
 }
+
+export type AssuntosExtras = Partial<Record<ChaveAssuntos, string[]>>
+
+export const ROTULOS_ASSUNTOS: Record<ChaveAssuntos, string> = {
+  pedagogica: 'Reunião pedagógica',
+  pais: 'Pais e responsáveis',
+  orientacao_aluno: 'Orientação a alunos',
+  orientacao_funcionario: 'Orientação a funcionários',
+}
+export const CHAVES_ASSUNTOS = Object.keys(ASSUNTOS_PADRAO) as ChaveAssuntos[]
+
+const chaveTexto = (s: string) => s.trim().toLocaleLowerCase('pt-BR')
+
+export const assuntoJaUsado = (pauta: string[], assunto: string) => pauta.some(p => chaveTexto(p) === chaveTexto(assunto))
+
+/**
+ * Toca num chip: adiciona o assunto (no primeiro item vazio, ou no fim) ou, se já estiver na pauta, remove.
+ * A pauta nunca fica sem campo para digitar.
+ */
+export function alternarAssunto(pauta: string[], assunto: string): string[] {
+  if (assuntoJaUsado(pauta, assunto)) {
+    const resto = pauta.filter(p => chaveTexto(p) !== chaveTexto(assunto))
+    return resto.length ? resto : ['']
+  }
+  const vazio = pauta.findIndex(p => !p.trim())
+  if (vazio >= 0) return pauta.map((p, i) => (i === vazio ? assunto : p))
+  return [...pauta, assunto]
+}
+
+/** Acrescenta um assunto próprio da escola (ignora vazio e repetido, inclusive dos padrões). */
+export function adicionarExtra(extras: AssuntosExtras, chave: ChaveAssuntos, texto: string): AssuntosExtras {
+  const t = texto.trim()
+  if (!t || assuntosSugeridos([chave], extras).some(a => chaveTexto(a) === chaveTexto(t))) return extras
+  return { ...extras, [chave]: [...(extras[chave] ?? []), t] }
+}
+
+export function removerExtra(extras: AssuntosExtras, chave: ChaveAssuntos, texto: string): AssuntosExtras {
+  return { ...extras, [chave]: (extras[chave] ?? []).filter(a => chaveTexto(a) !== chaveTexto(texto)) }
+}
