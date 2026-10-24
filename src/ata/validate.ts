@@ -32,7 +32,7 @@ export function validateAta(r: AtaRenderizada): string[] {
 
   if (!texto.trim()) return ['Texto da ata vazio.'];
 
-  if (/[\r\n\t  ]/.test(texto) || / {2}/.test(texto) || texto !== texto.trim()) {
+  if (/[\r\n\t\u2028\u2029]/.test(texto) || / {2}/.test(texto) || texto !== texto.trim()) {
     problemas.push('Texto não é um bloco único corrido: há parágrafos, quebras de linha, espaços duplicados ou espaços nas pontas.');
   }
   if (FORMATACAO.test(texto)) {

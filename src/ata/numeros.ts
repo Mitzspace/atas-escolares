@@ -45,7 +45,7 @@ function ehFeminino(palavra: string): boolean {
   const w = palavra.toLocaleLowerCase('pt-BR');
   if (FEMININAS_EXTRAS.has(w)) return true;
   if (MASCULINAS_EM_A.has(w) || MASCULINAS_EM_OES.has(w)) return false;
-  return /(a|as|ões|ade|ades|ção)$/.test(w);
+  return /(a|as|ões|ade|ades|ção|são|nião|stão)$/.test(w);
 }
 
 function moeda(reais: number, centavos: number): string {
