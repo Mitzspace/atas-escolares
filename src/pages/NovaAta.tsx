@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { TIPOS_ATA, type MeetingMetadata, type Participante, type Pessoa, type TipoAta } from '../ata-api'
+import AssuntosSugeridos from '../components/AssuntosSugeridos'
 import Gravador from '../components/Gravador'
+import { assuntosSugeridos, chavesDeAssuntos } from '../assuntos'
 import { apagarSessaoGravacao, getSettings, novoId, proximoNumero, saveAta, saveAudio, saveSettings } from '../db'
 import { mimeDoAudio } from '../gemini'
 import { vinculoDoResponsavel } from '../pessoas'
@@ -334,6 +336,10 @@ export default function NovaAta() {
 
       <section className="card space-y-5">
         <h2 className="font-semibold">{ehOrientacao ? 'Motivo e assuntos da orientação' : 'Pauta'}</h2>
+        <AssuntosSugeridos
+          sugestoes={assuntosSugeridos(chavesDeAssuntos(tipo, ehOrientacao ? [orientadoTipo] : []), cfg.assuntosExtras)}
+          pauta={pauta} onChange={setPauta}
+        />
         {pauta.map((x, i) => (
           <div key={i} className="flex gap-2">
             <input aria-label={ehOrientacao ? `Assunto ${i + 1}` : `Item ${i + 1} da pauta`} className="field" value={x} onChange={e => setPauta(ps => ps.map((y, j) => (j === i ? e.target.value : y)))} placeholder={ehOrientacao ? `Assunto ${i + 1}` : `Item ${i + 1}`} />

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { adicionarExtra, ASSUNTOS_PADRAO, CHAVES_ASSUNTOS, removerExtra, ROTULOS_ASSUNTOS, type ChaveAssuntos } from '../assuntos'
 import { getSettings, saveSettings } from '../db'
 import { testarChave } from '../gemini'
 import { MODELOS, type Settings } from '../types'
@@ -65,6 +66,16 @@ export default function Configuracoes() {
       </section>
 
       <section className="card space-y-3">
+        <h2 className="font-semibold">Assuntos padrão das atas</h2>
+        <p className="text-sm text-slate-600">Aparecem como sugestões na pauta de cada tipo de ata. Os padrões não podem ser removidos; acrescente os assuntos da sua escola.</p>
+        {CHAVES_ASSUNTOS.map(k => (
+          <GrupoAssuntos key={k} chave={k} extras={s.assuntosExtras[k] ?? []}
+            onAdd={t => up({ assuntosExtras: adicionarExtra(s.assuntosExtras, k, t) })}
+            onRemove={t => up({ assuntosExtras: removerExtra(s.assuntosExtras, k, t) })} />
+        ))}
+      </section>
+
+      <section className="card space-y-3">
         <h2 className="font-semibold">Professores e funcionários</h2>
         <p className="text-sm text-slate-600">Aparecem já na lista de participantes de cada nova ata.</p>
         {s.pessoas.map((p, i) => (
@@ -80,5 +91,32 @@ export default function Configuracoes() {
       {msg && <div role="status" className={`card ${msg.ok ? 'border-green-300 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800'}`}>{msg.texto}</div>}
       <button className="btn-primary w-full" onClick={salvar}>Salvar</button>
     </div>
+  )
+}
+
+function GrupoAssuntos({ chave, extras, onAdd, onRemove }: { chave: ChaveAssuntos; extras: string[]; onAdd: (t: string) => void; onRemove: (t: string) => void }) {
+  const [novo, setNovo] = useState('')
+  const adicionar = () => { if (novo.trim()) { onAdd(novo); setNovo('') } }
+  return (
+    <details className="rounded-xl border border-rule p-3">
+      <summary className="flex min-h-11 cursor-pointer items-center font-semibold">{ROTULOS_ASSUNTOS[chave]} <span className="ml-2 text-sm font-normal text-slate-600">({ASSUNTOS_PADRAO[chave].length + extras.length})</span></summary>
+      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+        {ASSUNTOS_PADRAO[chave].map(a => <li key={a}>{a}</li>)}
+      </ul>
+      {extras.length > 0 && (
+        <ul className="mt-3 space-y-2">
+          {extras.map(a => (
+            <li key={a} className="flex items-center gap-2">
+              <span className="flex-1 rounded-lg bg-blue-50 px-3 py-2 text-sm">{a}</span>
+              <button type="button" className="btn-danger px-3" onClick={() => onRemove(a)} aria-label={`Remover ${a}`}>✕</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 flex gap-2">
+        <input className="field" value={novo} onChange={e => setNovo(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); adicionar() } }} placeholder="Assunto da escola" aria-label={`Novo assunto de ${ROTULOS_ASSUNTOS[chave]}`} />
+        <button type="button" className="btn-secondary" onClick={adicionar} disabled={!novo.trim()}>Adicionar</button>
+      </div>
+    </details>
   )
 }
