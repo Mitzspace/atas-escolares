@@ -98,8 +98,16 @@ export function preencherIguais(texto: string, m: Marcador, valor: string): stri
 /**
  * Resultado de mudar quem estava presente: nova ata renderizada e o texto que a usuária vê.
  * `textoPreservado` = false quando a abertura foi editada à mão: o texto fica como está e a usuária decide.
+ * Só quem foi convocado (participantes da Nova ata) aparece como ausente; cadastrados desmarcados ficam fora da ata.
  */
-export function aplicarPresenca(ata: AtaRecord, participantes: MeetingMetadata['participantes']) {
+export function aplicarPresenca(ata: AtaRecord, lista: MeetingMetadata['participantes']) {
+  const convocados = ata.convocados ?? ata.meta.participantes.map(chaveNome)
+  const participantes = lista.filter(p => p.presente || convocados.includes(chaveNome(p)))
+  const r = recalcular(ata, participantes)
+  return { ...r, convocados }
+}
+
+function recalcular(ata: AtaRecord, participantes: MeetingMetadata['participantes']) {
   const meta = { ...ata.meta, participantes }
   const antigo = ata.renderizada!.texto
   const renderizada = renderAta(meta, ata.extraida!)

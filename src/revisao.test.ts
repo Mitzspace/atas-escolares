@@ -237,3 +237,27 @@ describe('listaDePresenca: nomes com acento, caixa e espaços', () => {
     expect(l.map(p => [p.nome, p.presente])).toEqual([['Joana Alves', false], ['Ana Lima', false]])
   })
 })
+
+describe('aplicarPresenca: só convocados aparecem como ausentes', () => {
+  const cadastro = [{ nome: 'Rui Lopes', cargo: 'Merendeiro' }]
+
+  it('cadastrado não convocado e desmarcado fica fora da ata', () => {
+    const lista = listaDePresenca(meta.participantes, cadastro, [meta.presidente, meta.secretario])
+    const desmarcaCarlos = lista.map(p => (p.nome === 'Carlos Mendes' ? { ...p, presente: false } : p))
+    const r = aplicarPresenca(ata(), desmarcaCarlos)
+    expect(r.texto).toContain('Não compareceu o seguinte convocado: Carlos Mendes, professor')
+    expect(r.texto).not.toContain('Rui Lopes')
+    expect(r.convocados).toEqual(['joana alves', 'carlos mendes'])
+  })
+
+  it('cadastrado marcado e depois desmarcado some da ata em vez de virar ausente', () => {
+    const lista = listaDePresenca(meta.participantes, cadastro)
+    const marcado = aplicarPresenca(ata(), lista.map(p => ({ ...p, presente: true })))
+    expect(marcado.renderizada.assinaturas.map(p => p.nome)).toContain('Rui Lopes')
+
+    const a = { ...ata(), meta: marcado.meta, renderizada: marcado.renderizada, convocados: marcado.convocados }
+    const volta = aplicarPresenca(a, listaDePresenca(a.meta.participantes, cadastro).map(p => (p.nome === 'Rui Lopes' ? { ...p, presente: false } : p)))
+    expect(volta.texto).not.toContain('Rui Lopes')
+    expect(volta.meta.participantes.map(p => p.nome)).not.toContain('Rui Lopes')
+  })
+})

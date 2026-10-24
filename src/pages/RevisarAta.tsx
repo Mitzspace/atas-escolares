@@ -70,7 +70,7 @@ export default function RevisarAta() {
     const participantes = lista.map((p, j) => (j === i ? { ...p, presente: !p.presente } : p))
     const r = aplicarPresenca({ ...atual, textoEditado: texto ?? undefined }, participantes)
     setTextoDesatualizado(!r.textoPreservado)
-    await aplicar({ meta: r.meta, renderizada: r.renderizada, textoEditado: r.texto })
+    await aplicar({ meta: r.meta, renderizada: r.renderizada, textoEditado: r.texto, convocados: r.convocados })
   }
 
   async function refazerTexto() {

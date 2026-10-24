@@ -49,4 +49,6 @@ export type AtaRecord = {
   renderizada?: AtaRenderizada
   /** texto final editado pela usuária (substitui renderizada.texto) */
   textoEditado?: string
+  /** nomes (normalizados) de quem foi convocado na Nova ata; só eles aparecem como ausentes */
+  convocados?: string[]
 }
