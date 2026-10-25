@@ -180,7 +180,7 @@ describe('orientação', () => {
   it('abertura: orientador, orientado (nome NÃO anonimizado) e responsável acompanhante', () => {
     const r = renderAta(orient, extraida);
     expect(r.texto).toContain(
-      'reuniram-se Maria Souza, diretora, e a aluna orientada Ana Lima, do quinto ano B, acompanhada de sua mãe, Clara Lima, totalizando três presentes, para tratar de orientação sobre: um, faltas frequentes; dois, conflito com colegas.',
+      'reuniram-se Maria Souza, diretora, e a aluna orientada Ana Lima, do quinto ano B, acompanhada de sua mãe, Clara Lima, totalizando três presentes, para tratar de orientação sobre: um, Faltas frequentes; dois, Conflito com colegas.',
     );
   });
 

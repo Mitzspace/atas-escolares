@@ -17,12 +17,12 @@ const normalizar = (s: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
-/** Minúscula na primeira letra, exceto siglas e nomes com maiúscula interna. */
-function minuscula1(s: string): string {
+/** Cargo em minúsculas; preserva o complemento de disciplina, área ou instituição. */
+function cargoNoTexto(s: string): string {
   const t = limpar(s);
-  const primeira = t.split(' ')[0] ?? '';
-  if (!/^[A-ZÀ-Ý][a-zà-ÿ]*$/.test(primeira)) return t;
-  return t.charAt(0).toLocaleLowerCase('pt-BR') + t.slice(1);
+  const partes = /^(.*?)(\s+(?:de|da|do|das|dos|em)\s+)(.*)$/i.exec(t);
+  if (!partes) return t.toLocaleLowerCase('pt-BR');
+  return (partes[1] + partes[2]).toLocaleLowerCase('pt-BR') + partes[3];
 }
 
 const ABERTURAS_DE_FRASE = new Set(
@@ -54,7 +54,7 @@ function juntarComE(itens: string[]): string {
 
 function pessoaTxt(p: Pessoa): string {
   const nome = limpar(p.nome);
-  return p.cargo.trim() ? `${nome}, ${minuscula1(p.cargo)}` : nome;
+  return p.cargo.trim() ? `${nome}, ${cargoNoTexto(p.cargo)}` : nome;
 }
 
 /** quem presidiu também lavrou a ata */
@@ -168,18 +168,18 @@ function descricao(p: Participante, meta: MeetingMetadata): string {
   const cargo = limpar(p.cargo);
   switch (categoriaDe(p)) {
     case 'responsavel': {
-      const cab = cargo ? minuscula1(cargo) : 'responsável';
+      const cab = cargo ? cargoNoTexto(cargo) : 'responsável';
       const prep = cab.toLocaleLowerCase('pt-BR').startsWith('responsável') ? 'por' : 'de';
       const vinc = vinculoTxt(p, meta, prep);
       return vinc ? `${cab} ${vinc}` : cab;
     }
     case 'aluno': {
-      const cab = cargo ? minuscula1(cargo) : 'aluno(a)';
+      const cab = cargo ? cargoNoTexto(cargo) : 'aluno(a)';
       const turma = p.vinculo?.trim() ? ` ${turmaTxt(p.vinculo)}` : '';
       return `${cab}${turma}`;
     }
     default:
-      return cargo ? minuscula1(cargo) : '';
+      return cargo ? cargoNoTexto(cargo) : '';
   }
 }
 
@@ -247,7 +247,7 @@ const ehOrientado = (meta: MeetingMetadata, p: Participante) =>
 
 function listaPauta(meta: MeetingMetadata): string {
   return meta.pauta.length
-    ? meta.pauta.map((p, i) => `${numeroPorExtenso(i + 1)}, ${minuscula1(semPontoFinal(p))}`).join('; ')
+    ? meta.pauta.map((p, i) => `${numeroPorExtenso(i + 1)}, ${semPontoFinal(p)}`).join('; ')
     : meta.tipo === 'orientacao'
       ? '[PENDENTE: assunto da orientação]'
       : '[PENDENTE: pauta da reunião]';
@@ -454,7 +454,7 @@ function encerramento(meta: MeetingMetadata, extraida: AtaExtraida): string {
     ? horaPorExtenso(meta.horaFim)
     : `[PENDENTE: horário de término da ${orient ? 'orientação' : 'reunião'}]`;
   const quemLavrou = mesmaPessoa(meta)
-    ? `${meta.presidente.cargo.trim() ? `${minuscula1(meta.presidente.cargo)}, ` : ''}que presidi a reunião`
+    ? `${meta.presidente.cargo.trim() ? `${cargoNoTexto(meta.presidente.cargo)}, ` : ''}que presidi a reunião`
     : tituloSecretario(meta.secretario);
   let ciencia = '';
   if (orient) {

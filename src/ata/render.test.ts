@@ -61,7 +61,7 @@ describe('renderAta', () => {
   it('abre no padrão', () => {
     expect(
       r.texto.startsWith(
-        'Aos doze dias do mês de março do ano de dois mil e vinte e seis, às quatorze horas, na sala dos professores da Escola Municipal Professora Ana Lima, Secretaria Municipal de Educação de Exemplo, reuniram-se Maria Souza, diretora; Paulo Reis, professor; Joana Alves, coordenadora pedagógica; e Clara Dias, professora, totalizando quatro presentes, sob a presidência de Maria Souza, diretora, comigo, Paulo Reis, secretário, para tratar da seguinte pauta: um, avaliação diagnóstica do primeiro bimestre; dois, projeto de leitura; três, informes gerais.',
+        'Aos doze dias do mês de março do ano de dois mil e vinte e seis, às quatorze horas, na sala dos professores da Escola Municipal Professora Ana Lima, Secretaria Municipal de Educação de Exemplo, reuniram-se Maria Souza, diretora; Paulo Reis, professor; Joana Alves, coordenadora pedagógica; e Clara Dias, professora, totalizando quatro presentes, sob a presidência de Maria Souza, diretora, comigo, Paulo Reis, secretário, para tratar da seguinte pauta: um, Avaliação diagnóstica do primeiro bimestre; dois, Projeto de leitura; três, Informes gerais.',
       ),
     ).toBe(true);
   });
@@ -188,5 +188,63 @@ describe('renderAta: presidente também lavrou a ata', () => {
   it('assina uma vez só e passa na validação', () => {
     expect(r.assinaturas.filter((p) => p.nome === 'Maria Souza')).toHaveLength(1);
     expect(validateAta(r)).toEqual([]);
+  });
+});
+
+
+describe('revisão editorial da ata pedagógica', () => {
+  it.each([
+    ['coordenadora Pedagógica', 'coordenadora pedagógica'],
+    ['Coordenadora Pedagógica', 'coordenadora pedagógica'],
+    ['COORDENADORA PEDAGÓGICA', 'coordenadora pedagógica'],
+    ['Auxiliar Administrativo', 'auxiliar administrativo'],
+    ['Professor de Matemática', 'professor de Matemática'],
+    ['Professora de Língua Portuguesa', 'professora de Língua Portuguesa'],
+    ['Professor de AEE', 'professor de AEE'],
+    ['Técnico em Informática', 'técnico em Informática'],
+  ])('normaliza o cargo %s na abertura sem mudar o cadastro', (cargo, esperado) => {
+    const dados: MeetingMetadata = {
+      ...meta, participantes: [{ nome: 'Joana Alves', cargo, presente: true }],
+    };
+    const antes = structuredClone(dados);
+    expect(renderAta(dados, extraida).texto).toContain(`Joana Alves, ${esperado}, totalizando`);
+    expect(dados).toEqual(antes);
+  });
+
+  it('normaliza cargos também na presidência e na relação de ausentes', () => {
+    const dados: MeetingMetadata = {
+      ...meta,
+      presidente: { nome: 'Maria Souza', cargo: 'Diretora Escolar' },
+      participantes: [{ nome: 'Joana Alves', cargo: 'coordenadora Pedagógica', presente: false }],
+    };
+    const texto = renderAta(dados, extraida).texto;
+    expect(texto).toContain('sob a presidência de Maria Souza, diretora escolar,');
+    expect(texto).toContain('Não compareceu a seguinte convocada: Joana Alves, coordenadora pedagógica.');
+  });
+
+  it.each(['pedagogica', 'pais', 'orientacao'] as const)('preserva a grafia da pauta na abertura de %s', tipo => {
+    const dados: MeetingMetadata = {
+      ...meta, tipo, pauta: ['feira de Ciências', 'Feira de Ciências', 'Projeto Hora da Leitura', 'BNCC e APM'],
+    };
+    expect(renderAta(dados, extraida).texto).toContain(
+      'um, feira de Ciências; dois, Feira de Ciências; três, Projeto Hora da Leitura; quatro, BNCC e APM.',
+    );
+    expect(dados.pauta).toEqual(['feira de Ciências', 'Feira de Ciências', 'Projeto Hora da Leitura', 'BNCC e APM']);
+  });
+
+  it('instrui o modelo a atribuir a fala pelo cargo informado e preservar a pauta', () => {
+    const dados: MeetingMetadata = {
+      ...meta,
+      participantes: [{ nome: 'Joana Alves', cargo: 'coordenadora pedagógica', presente: true }],
+      pauta: ['feira de Ciências', 'Projeto Hora da Leitura'],
+    };
+    const { systemInstruction, userPrompt } = buildAtaPrompt(dados, []);
+    expect(systemInstruction).toContain('use exatamente o cargo da lista de pessoas');
+    expect(systemInstruction).toContain('sem acrescentar ou transformar o cargo em "professor" ou "professora"');
+    expect(systemInstruction).toContain('a coordenadora pedagógica Joana Alves informou que...');
+    expect(systemInstruction).not.toContain('a professora Maria Souza, coordenadora pedagógica');
+    expect(systemInstruction).toContain('Preserve a grafia e as maiúsculas/minúsculas dos itens da pauta exatamente como informados');
+    expect(userPrompt).toContain('- Joana Alves — coordenadora pedagógica');
+    expect(userPrompt).toContain('1. feira de Ciências\n2. Projeto Hora da Leitura');
   });
 });

@@ -127,8 +127,9 @@ const SYSTEM_REGRAS = `REGRAS DE REDAÇÃO (padrão de ata escolar)
 1. Cada texto é UMA sequência corrida de frases: sem quebras de linha, sem parágrafos, sem listas, sem marcadores, sem negrito ou qualquer formatação.
 2. Verbos no pretérito perfeito (informou, propôs, aprovou, ficou decidido), terceira pessoa, linguagem impessoal e formal. Nunca use primeira pessoa, presente ou futuro do narrador. Sem opinião, elogio, crítica ou adjetivação do redator.
 3. Números, datas e horas SEMPRE por extenso e sem dígitos: "dezenove de março", "duas horas", "trinta por cento", "primeiro bimestre". Sem abreviações (escreva "professora", "senhor", "coordenação"). Explique siglas na primeira vez (ex.: Associação de Pais e Mestres – APM).
-4. Atribua falas pelo nome e cargo da lista de pessoas ("a professora Maria Souza, coordenadora pedagógica, informou que..."). Se o falante não foi identificado, escreva "um participante" ou "uma participante" — nunca adivinhe quem falou.
+4. Atribua falas pelo nome e use exatamente o cargo da lista de pessoas, sem acrescentar ou transformar o cargo em "professor" ou "professora" (ex.: Joana Alves — coordenadora pedagógica → "a coordenadora pedagógica Joana Alves informou que..."). Não infira outro cargo pela fala ou pela profissão presumida. Se o falante não foi identificado, escreva "um participante" ou "uma participante" — nunca adivinhe quem falou.
 5. Relate apenas o que consta na transcrição. Ignore conversas paralelas, brincadeiras, ruídos e falas fora de propósito, salvo se levaram a uma decisão. Seja proporcional: de duas a seis frases por item, mais se houve muitas decisões.
+6. Preserve a grafia e as maiúsculas/minúsculas dos itens da pauta exatamente como informados pela usuária, inclusive nomes de eventos e projetos; não altere a inicial (ex.: "feira de Ciências" permanece "feira de Ciências").
 
 NÃO INVENTAR
 - Não acrescente fatos, nomes, números, datas, valores, votos, prazos ou decisões que não estejam na transcrição ou nos dados informados. Não complete lacunas por suposição.
