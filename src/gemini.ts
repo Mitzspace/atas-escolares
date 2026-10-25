@@ -79,8 +79,9 @@ async function comFallback<T>(
   modelo: string,
   fn: (modelo: string) => Promise<T>,
   onTentativa: (modelo: string, tentativa: number, fallback: boolean) => void,
+  prioritarios: string[] = [],
 ): Promise<T> {
-  const modelos = [...new Set([modelo, 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest'])]
+  const modelos = [...new Set([...prioritarios, modelo, 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest'])]
   for (let i = 0; i < modelos.length; i++) {
     const atual = modelos[i]
     try {
@@ -178,7 +179,7 @@ export async function transcreverAudio(opts: {
       }), (atual, tentativa, fallback) => onProgress(
         `${etapa} — ${atual} · tentativa ${tentativa}/3${fallback ? ' (modelo alternativo)' : ''}…`,
         0.2 + 0.75 * (i / faixas.length),
-      ))
+      ), ['gemini-3.5-transcribe'])
       todos.push(...parseJsonResposta<TranscriptSegment[]>(resp.text, resp.candidates?.[0]?.finishReason))
     }
     onProgress('Transcrição pronta', 1)

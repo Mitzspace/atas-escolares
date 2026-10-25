@@ -62,12 +62,13 @@ const meta: MeetingMetadata = {
   presidente: { nome: 'Ana', cargo: 'Diretora' }, secretario: { nome: 'Bia', cargo: 'Professora' },
   participantes: [], pauta: ['Planejamento'], anonimizarAlunos: true,
 }
-const modelos = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest']
+const cadeiaConfigurada = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest']
 const cota = () => Object.assign(new Error('RESOURCE_EXHAUSTED'), { status: 429 })
 const sobrecarga = () => Object.assign(new Error('UNAVAILABLE: overloaded'), { status: 503 })
 
 // Exercita os dois consumidores com SDK simulado, sem chamadas externas nem espera real.
 describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
+  const modelos = fluxo === 'transcricao' ? ['gemini-3.5-transcribe', ...cadeiaConfigurada] : cadeiaConfigurada
   beforeEach(() => {
     vi.useFakeTimers()
     vi.stubGlobal('Audio', class {
@@ -87,13 +88,13 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
     const apagar = vi.fn(async () => ({}))
     const ai = { models: { generateContent }, files: { upload, delete: apagar } } as unknown as GoogleGenAI
     const progresso = vi.fn()
-    const executar = (modelo = modelos[0]) => fluxo === 'ata'
+    const executar = (modelo = cadeiaConfigurada[0]) => fluxo === 'ata'
       ? gerarAta({ apiKey: 'teste', modelo, meta, transcript: [], ai, onProgress: progresso })
       : transcreverAudio({ apiKey: 'teste', modelo, meta, file: new File(['audio'], 'teste.mp3'), ai, onProgress: progresso })
     return { generateContent, upload, apagar, progresso, executar }
   }
 
-  it.each([0, 1, 2, 3])('sucesso no modelo de índice %i, após esgotar os anteriores', async indice => {
+  it.each(modelos.map((_, indice) => indice))('sucesso no modelo de índice %i, após esgotar os anteriores', async indice => {
     const caso = preparar(modelo => {
       if (modelo !== modelos[indice]) throw sobrecarga()
       return { text: '[]' }
@@ -140,7 +141,7 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
     expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual(Array(chamadas).fill(modelos[0]))
   })
 
-  it.each([1, 2, 3])('cota avança até o modelo funcional de índice %i', async indice => {
+  it.each(modelos.slice(1).map((_, indice) => indice + 1))('cota avança até o modelo funcional de índice %i', async indice => {
     const caso = preparar(modelo => {
       if (modelo !== modelos[indice]) throw cota()
       return { text: '[]' }
@@ -189,13 +190,19 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
     expect(caso.generateContent).toHaveBeenCalledTimes(1)
   })
 
-  it('não repete modelo configurado já presente nos alternativos', async () => {
-    const caso = preparar(() => { throw sobrecarga() })
-    const verificar = expect(caso.executar(modelos[1])).rejects.toMatchObject({ kind: 'sobrecarga' })
-    await vi.runAllTimersAsync()
-    await verificar
-    expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual([
-      ...modelos.slice(1).flatMap(m => [m, m, m]),
-    ])
-  })
+  it.each([...cadeiaConfigurada, 'gemini-3.5-transcribe'])(
+    'deduplica a cadeia com modelo configurado %s', async configurado => {
+      const caso = preparar(() => { throw sobrecarga() })
+      const verificar = expect(caso.executar(configurado)).rejects.toMatchObject({ kind: 'sobrecarga' })
+      await vi.runAllTimersAsync()
+      await verificar
+      const esperados = [...new Set([
+        ...(fluxo === 'transcricao' ? ['gemini-3.5-transcribe'] : []),
+        configurado, ...cadeiaConfigurada.slice(1),
+      ])]
+      expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual(
+        esperados.flatMap(m => [m, m, m]),
+      )
+    },
+  )
 })
