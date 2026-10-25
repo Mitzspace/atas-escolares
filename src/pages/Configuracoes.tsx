@@ -68,9 +68,9 @@ export default function Configuracoes() {
       </section>
 
       <section className="card space-y-3">
-        <h2 className="font-semibold">Gemini (reserva opcional)</h2>
-        <p className="text-sm text-slate-600">Crie uma chave no <a className="font-semibold text-blue-800 underline" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Google AI Studio</a> para ter uma reserva. Você também pode usar apenas o Gemini.</p>
-        <label className="label" htmlFor="chave-gemini">Chave do Gemini (opcional, reserva)</label>
+        <h2 className="font-semibold">Gemini (redação preferida)</h2>
+        <p className="text-sm text-slate-600">Crie uma chave no <a className="font-semibold text-blue-800 underline" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Google AI Studio</a> para redigir as atas e ter reserva na transcrição. Você também pode usar apenas um dos fornecedores.</p>
+        <label className="label" htmlFor="chave-gemini">Chave do Gemini (opcional)</label>
         <div className="flex gap-2">
           <input id="chave-gemini" className="field" type={verChave.gemini ? 'text' : 'password'} autoComplete="off" value={s.apiKey} onChange={e => up({ apiKey: e.target.value })} placeholder="Cole a chave do Gemini" />
           <button type="button" className="btn-secondary" onClick={() => setVerChave(v => ({ ...v, gemini: !v.gemini }))}>{verChave.gemini ? 'Ocultar' : 'Ver'}<span className="sr-only"> chave do Gemini</span></button>

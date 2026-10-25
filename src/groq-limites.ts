@@ -14,8 +14,14 @@ export function blocosTranscricao(transcript: TranscriptSegment[], limite = 4000
   let atual: TranscriptSegment[] = [], tokens = 0
   for (const s of transcript) {
     const tamanhoTexto = Math.max(1, limite * 4 - JSON.stringify({ ...s, text: '' }).length - 80)
-    for (let inicio = 0; inicio < Math.max(s.text.length, 1); inicio += tamanhoTexto) {
-      const parte = { ...s, text: s.text.slice(inicio, inicio + tamanhoTexto) }
+    for (let inicio = 0; inicio < Math.max(s.text.length, 1);) {
+      let fim = Math.min(s.text.length, inicio + tamanhoTexto)
+      if (fim < s.text.length) {
+        const espaco = s.text.lastIndexOf(' ', fim - 1)
+        if (espaco > inicio) fim = espaco + 1
+      }
+      const parte = { ...s, text: s.text.slice(inicio, fim) }
+      inicio = fim || 1
       const custo = estimarTokens(parte) + 16
       if (atual.length && (tokens + custo > limite || segundos(parte.start) - segundos(atual[0].start) >= 1200)) {
         blocos.push(atual); atual = []; tokens = 0
@@ -53,7 +59,7 @@ export function consolidarParciais(parciais: AtaExtraida[]): AtaExtraida {
     return [...mapa.values()]
   }
   const resultado: AtaExtraida = {
-    itens: [...itens].map(([pauta, relatos]) => ({ pauta, relato: unicos(relatos).join(' ') })),
+    itens: [...itens].map(([pauta, relatos]) => ({ pauta, relato: unicos(relatos).map(t => /[.!?]$/.test(t.trim()) ? t.trim() : `${t.trim()}.`).join(' ') })),
     deliberacoes: juntar(parciais.flatMap(p => p.deliberacoes), 'texto'),
     encaminhamentos: juntar(parciais.flatMap(p => p.encaminhamentos), 'acao'),
     pendencias: [],

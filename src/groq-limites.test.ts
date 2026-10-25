@@ -12,6 +12,7 @@ it('divide por orçamento e tempo sem descartar texto ou atribuições', () => {
   const partes = blocosTranscricao([{ speaker: 'Carlos', start: '00:00', end: '00:10', text: texto }], 200)
   expect(partes.length).toBeGreaterThan(1)
   expect(partes.flat().map(p => p.text).join('')).toBe(texto)
+  expect(partes.flat().slice(0, -1).every(p => /\s$/.test(p.text))).toBe(true)
   expect(partes.flat().every(p => p.speaker === 'Carlos' && p.start === '00:00')).toBe(true)
   expect(blocosTranscricao([
     { speaker: 'Ana', start: '00:00', end: '00:10', text: 'Um.' },
