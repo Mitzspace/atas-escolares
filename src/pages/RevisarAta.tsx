@@ -67,8 +67,9 @@ export default function RevisarAta() {
 
   /** grava no banco e na tela; o efeito acima atualiza o textarea a partir de `ata` */
   async function aplicar(patch: Partial<AtaRecord>) {
-    await patchAta(id, patch)
+    // Checkbox controlado precisa do novo estado no próprio evento, antes do IndexedDB.
     setAta(a => (a ? { ...a, ...patch } : a))
+    await patchAta(id, patch)
     setSalvo(true)
   }
 
