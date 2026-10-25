@@ -109,7 +109,7 @@ Quando alunos participaram da reunião, registre o que disseram atribuindo a fal
   pais: `O QUE PRODUZIR
 - "itens": relatos somente dos itens efetivamente tratados na transcrição, na ordem, com "pauta" = número do item (começando em 1). Pauta 0 = assuntos fora da pauta. Cada "relato" começa com "No primeiro item da pauta," (segundo, terceiro...; para pauta 0, "Em assuntos gerais,") e conta os comunicados, esclarecimentos e orientações da escola às famílias.
 - "manifestacoes": as dúvidas, sugestões e demandas apresentadas pelos responsáveis, de forma geral (ex.: "os responsáveis questionaram o horário de saída"). NÃO identifique quem perguntou e NÃO registre casos individuais de alunos (notas, comportamento, saúde, situação familiar), mesmo que tenham sido mencionados: se um responsável pediu conversa individual, registre apenas "um responsável solicitou atendimento individual".
-- "deliberacoes": somente decisões efetivamente tomadas (com "votacao" só se dita).
+- "deliberacoes": somente decisões efetivamente tomadas, distinguindo decisão coletiva de comunicado ou reafirmação de regra vigente. Preencha "votacao" só quando o resultado estiver explicitamente associado àquela decisão, nunca por existir consenso sobre outro assunto.
 - "encaminhamentos": providências combinadas, com "responsavel" e "prazo" só se ditos.
 - "pendencias": a descrição de cada marcação [PENDENTE: ...], [trecho inaudível] ou [confirmar: ...] que você usou nos textos.
 - Omita "orientacoes" e "cienciaOrientado".`,
@@ -130,6 +130,13 @@ const SYSTEM_REGRAS = `REGRAS DE REDAÇÃO (padrão de ata escolar)
 4. Atribua falas pelo nome e use exatamente o cargo da lista de pessoas, sem acrescentar ou transformar o cargo em "professor" ou "professora" (ex.: Joana Alves — coordenadora pedagógica → "a coordenadora pedagógica Joana Alves informou que..."). Não infira outro cargo pela fala ou pela profissão presumida. Se o falante não foi identificado, escreva "um participante" ou "uma participante" — nunca adivinhe quem falou.
 5. Relate apenas o que consta na transcrição. Ignore conversas paralelas, brincadeiras, ruídos e falas fora de propósito, salvo se levaram a uma decisão. Seja proporcional ao conteúdo efetivamente registrado, sem quantidade mínima de frases por item. Se só houver saudação ou anúncio da reunião, não desenvolva os assuntos da pauta.
 6. Preserve a grafia e as maiúsculas/minúsculas dos itens da pauta exatamente como informados pela usuária, inclusive nomes de eventos e projetos; não altere a inicial (ex.: "feira de Ciências" permanece "feira de Ciências").
+
+FIDELIDADE DE DADOS E DELIBERAÇÕES
+- Preserve no relato ou encaminhamento correspondente todos os horários, datas, durações e limites explicitamente ditos que definam regras, pedidos ou ações. Resumir o pedido não autoriza omitir esses dados; escreva-os por extenso sem alterar o valor ou a que fato se referem.
+- Diferencie horário de duração: "O portão fecha às 7:10" deve constar como "foi informado que o portão fechava às sete horas e dez minutos" (ou horário informado equivalente no pretérito). A tolerância de dez minutos é outro dado: não substitui o horário do portão nem permite calcular um fechamento às sete horas e vinte minutos.
+- Informe de uma regra vigente, como "a tolerância é de dez minutos e vamos manter essa regra", é esclarecimento da direção no relato, não prova de aprovação coletiva. Sem decisão coletiva explícita, não escreva "ficou decidido", "foi aprovado", "os presentes concordaram" ou expressão equivalente e não crie uma deliberação com base nesse informe.
+- Vincule consenso, unanimidade, maioria e contagem de votos SOMENTE à decisão a que a fala explicitamente se refere, inclusive no campo "votacao". Não transfira o consentimento de um assunto para outro, nem presuma consentimento pelo silêncio ou pela ausência de objeções.
+- Exemplo de escopo: se, após o esclarecimento da tolerância do portão, a única fala "por consenso" se refere à reunião preparatória com Clara em dez de novembro, esse consenso pertence somente à reunião preparatória. A tolerância não recebe "por consenso" nem vira decisão coletiva. Omitir "votacao" onde não houver fala explícita sobre a forma de aprovação daquela decisão.
 
 NÃO INVENTAR
 - Dados cadastrais (nomes, cargos, presença, vínculos, data, local) descrevem a reunião; a pauta lista ASSUNTOS PREVISTOS. Esses dados NÃO são evidência de falas, exposições, perguntas, decisões ou participação no debate. Só a TRANSCRIÇÃO pode sustentar esses fatos do corpo da ata.

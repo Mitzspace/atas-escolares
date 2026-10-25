@@ -73,3 +73,51 @@ describe('vínculo do responsável e conteúdo sustentado pela transcrição', (
     expect(ata.texto).not.toMatch(/Maria Souza informou|passando a palavra|Joana Alves expôs|iniciou a exposição|Os responsáveis apresentaram|Ficou registrada|Como encaminhamento/);
   });
 });
+
+const falaPortaoEReuniao: TranscriptSegment[] = [{
+  speaker: 'Falante 1', start: '00:00', end: '01:00',
+  text: 'O portão fecha às 7:10. Peço mais tolerância quando o trânsito atrasa a chegada. ' +
+    'Rui, a tolerância é de 10 minutos e vamos manter essa regra. ' +
+    'Por consenso, Ana Costa e Beatriz Lima se reunirão com a professora Clara Dias em 10/11 para preparar a feira.',
+}];
+
+describe('horário do portão e escopo do consenso', () => {
+  it.each(['pedagogica', 'pais', 'orientacao'] as const)('prompt de %s preserva os valores e vincula consenso à decisão correspondente', tipo => {
+    const { systemInstruction, userPrompt } = buildAtaPrompt({ ...meta, tipo }, falaPortaoEReuniao);
+    expect(userPrompt).toContain(falaPortaoEReuniao[0].text);
+    expect(systemInstruction).toContain('todos os horários, datas, durações e limites explicitamente ditos');
+    expect(systemInstruction).toContain('sete horas e dez minutos');
+    expect(systemInstruction).toContain('A tolerância de dez minutos é outro dado');
+    expect(systemInstruction).toContain('nem permite calcular um fechamento às sete horas e vinte minutos');
+    expect(systemInstruction).toContain('é esclarecimento da direção no relato, não prova de aprovação coletiva');
+    expect(systemInstruction).toContain('Não transfira o consentimento de um assunto para outro');
+    expect(systemInstruction).toContain('esse consenso pertence somente à reunião preparatória');
+    expect(systemInstruction).toContain('Omitir "votacao" onde não houver fala explícita');
+  });
+
+  it.each(['7:10', '7h10', 'sete horas e dez minutos'])('renderiza o horário %s sem perdê-lo nem converter a tolerância em deliberação', horario => {
+    const extraida: AtaExtraida = {
+      itens: [{ pauta: 1, relato: `Foi informado que o portão fechava às ${horario}. A diretora esclareceu que a tolerância de 10 minutos seria mantida.` }],
+      manifestacoes: ['Um responsável pediu mais tolerância devido ao trânsito.'],
+      deliberacoes: [{ texto: 'Foi aprovada a reunião preparatória da feira com Clara Dias em 10/11', votacao: 'por consenso' }],
+      encaminhamentos: [{ acao: 'Reunir as voluntárias com Clara Dias para preparar a feira', responsavel: 'Ana Costa e Beatriz Lima', prazo: '10/11' }],
+      pendencias: [],
+    };
+    const ata = renderAta({ ...meta, pauta: ['Frequência e atrasos'] }, extraida);
+    expect(ata.texto).toContain('o portão fechava às sete horas e dez minutos.');
+    expect(ata.texto).toContain('A diretora esclareceu que a tolerância de dez minutos seria mantida.');
+    expect(ata.texto).toContain('foi aprovada a reunião preparatória da feira com Clara Dias em dez de novembro (por consenso).');
+    expect(ata.texto.match(/por consenso/g)).toHaveLength(1);
+    expect(ata.texto).not.toMatch(/tolerância[^.]*consenso|decidido[^.]*tolerância|sete horas e vinte minutos/);
+    const pdf = JSON.stringify(montarDocumento(ata, ata.texto, meta).content);
+    expect(pdf).toContain('portão fechava às sete horas e dez minutos');
+  });
+
+  it('não acrescenta consenso quando a decisão extraída não tem forma de aprovação informada', () => {
+    const ata = renderAta(meta, {
+      ...vazia, deliberacoes: [{ texto: 'Foi aprovada a reunião preparatória com Clara Dias em 10/11' }],
+    });
+    expect(ata.texto).toContain('foi aprovada a reunião preparatória com Clara Dias em dez de novembro.');
+    expect(ata.texto).not.toMatch(/consenso|unanimidade|maioria/);
+  });
+});

@@ -21,7 +21,7 @@ export const ataResponseSchema: object = {
   properties: {
     itens: {
       type: 'ARRAY',
-      description: 'Um relato por item da pauta, na ordem da pauta.',
+      description: 'Relatos dos itens efetivamente tratados, na ordem da pauta. Itens sem fala registrada ficam ausentes, para o código gerar pendência.',
       items: {
         type: 'OBJECT',
         properties: {
@@ -31,7 +31,7 @@ export const ataResponseSchema: object = {
           },
           relato: {
             type: 'STRING',
-            description: 'Texto corrido, sem quebras de linha, pretérito perfeito, terceira pessoa, números por extenso.',
+            description: 'Texto corrido, sem quebras de linha, pretérito perfeito, terceira pessoa, números por extenso. Preserve horários, datas, durações e limites explicitamente ditos no assunto, sem omitir nem trocar seus valores. Informe de regra vigente não é aprovação coletiva.',
           },
         },
         required: ['pauta', 'relato'],
@@ -40,14 +40,14 @@ export const ataResponseSchema: object = {
     },
     deliberacoes: {
       type: 'ARRAY',
-      description: 'Decisões efetivamente tomadas na reunião.',
+      description: 'Decisões coletivas explicitamente tomadas na reunião. Não transformar comunicado ou reafirmação de regra vigente em decisão coletiva.',
       items: {
         type: 'OBJECT',
         properties: {
           texto: { type: 'STRING', description: 'A decisão, em uma frase no pretérito perfeito.' },
           votacao: {
             type: 'STRING',
-            description: 'Resultado da votação, só se mencionado (ex.: "aprovado por unanimidade"). Omitir se não houve.',
+            description: 'Resultado de votação ou consenso explicitamente associado a ESTA decisão (ex.: "aprovado por unanimidade"). Não transferir aprovação de outro assunto. Omitir se não dito para esta decisão.',
           },
         },
         required: ['texto'],
@@ -60,7 +60,7 @@ export const ataResponseSchema: object = {
       items: {
         type: 'OBJECT',
         properties: {
-          acao: { type: 'STRING', description: 'O que ficou combinado fazer.' },
+          acao: { type: 'STRING', description: 'O que ficou explicitamente combinado fazer, preservando os horários, datas, durações e limites ditos que definem a ação.' },
           responsavel: { type: 'STRING', description: 'Quem fará, só se dito. Omitir se não dito.' },
           prazo: { type: 'STRING', description: 'Prazo, só se dito, por extenso. Omitir se não dito.' },
         },
