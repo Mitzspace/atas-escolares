@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { TranscriptSegment } from '../ata-api'
 import { patchAta } from '../db'
@@ -7,6 +7,7 @@ import { useAta, useDebouncedEffect } from '../hooks'
 export default function RevisarTranscricao() {
   const { id = '' } = useParams()
   const nav = useNavigate()
+  const listaFalantesId = useId()
   const [ata] = useAta(id)
   const [segs, setSegs] = useState<TranscriptSegment[] | null>(null)
   const [salvo, setSalvo] = useState(true)
@@ -37,8 +38,13 @@ export default function RevisarTranscricao() {
         {' '}<span aria-live="polite">{salvo ? 'Salvo.' : 'Salvando…'}</span>
       </p>
 
+      {ata.provedorTranscricao && <p className="text-sm text-slate-600">Transcrição: {ata.provedorTranscricao === 'groq' ? 'Groq' : 'Gemini'} · {ata.modeloTranscricao}</p>}
+      {ata.provedorTranscricao === 'groq' && <p role="status" className="card border-blue-200 bg-blue-50 text-blue-900">O Whisper não separa falantes. “Falante” não significa que todos os trechos sejam da mesma pessoa. Atribua o nome em cada trecho quando souber quem falou.</p>}
+      <datalist id={listaFalantesId}>
+        {[...new Set([ata.meta.presidente.nome, ata.meta.secretario.nome, ...ata.meta.participantes.map(p => p.nome)])].filter(Boolean).map(nome => <option key={nome} value={nome} />)}
+      </datalist>
       <section className="card space-y-3">
-        <h2 className="font-semibold">Quem falou</h2>
+        <h2 className="font-semibold">Renomear falante em todos os trechos</h2>
         {falantes.map(f => (
           <FalanteInput key={f} nome={f} onRenomear={renomear} />
         ))}
@@ -51,6 +57,11 @@ export default function RevisarTranscricao() {
               <span><b className="text-slate-900">{s.speaker}</b> · {s.start}–{s.end}</span>
               <button className="btn-danger shrink-0 px-3" onClick={() => mudar(segs.filter((_, j) => j !== i))} aria-label="Remover trecho">Remover</button>
             </div>
+            <label className="block"><span className="label">Quem falou neste trecho</span>
+              <input className="field" list={listaFalantesId} aria-label={`Falante do trecho ${i + 1}`} value={s.speaker}
+                onChange={e => mudar(segs.map((x, j) => j === i ? { ...x, speaker: e.target.value } : x))}
+                onBlur={() => { if (!s.speaker.trim()) mudar(segs.map((x, j) => j === i ? { ...x, speaker: 'Falante' } : x)) }} />
+            </label>
             <textarea
               aria-label={`Trecho de ${s.speaker}, ${s.start} a ${s.end}`} className="field" rows={Math.max(2, Math.ceil(s.text.length / 45))}
               value={s.text} onChange={e => mudar(segs.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}

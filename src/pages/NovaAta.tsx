@@ -177,9 +177,9 @@ export default function NovaAta() {
         <h1>Nova ata – {nomeTipo}</h1>
         <button type="button" className="mt-2 min-h-11 text-sm font-semibold text-blue-900 underline" onClick={() => setTipo(null)}>Trocar o tipo de ata</button>
       </div>
-      {!cfg.apiKey.trim() && (
+      {!cfg.apiKey.trim() && !cfg.groqApiKey.trim() && (
         <div className="card border-amber-300 bg-amber-50 text-amber-900">
-          Falta a chave do Gemini. <Link to="/config" className="font-semibold underline">Colar em Configurações</Link>.
+          Falta a chave do Groq ou do Gemini. <Link to="/config" className="font-semibold underline">Colar em Configurações</Link>.
         </div>
       )}
       {!cfg.escola.trim() && (

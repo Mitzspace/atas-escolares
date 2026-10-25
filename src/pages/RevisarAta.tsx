@@ -109,6 +109,7 @@ export default function RevisarAta() {
       <div><p className="eyebrow mb-2">REVISÃO DO DOCUMENTO</p><h1 className="break-words">{atual.renderizada!.titulo}</h1></div>
       <div className="text-sm text-slate-600">{atual.renderizada!.cabecalho.filter(Boolean).join(' · ')}</div>
 
+      {atual.provedorRedacao && <p className="text-sm text-slate-600">Redação: {atual.provedorRedacao === 'groq' ? 'Groq' : 'Gemini'} · {atual.modeloRedacao}</p>}
       <AvisoModeloEconomico modelo={atual.modeloRedacao} />
 
       <section className="card space-y-4">

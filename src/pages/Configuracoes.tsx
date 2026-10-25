@@ -2,30 +2,32 @@ import { useEffect, useState } from 'react'
 import { adicionarExtra, ASSUNTOS_PADRAO, CHAVES_ASSUNTOS, removerExtra, ROTULOS_ASSUNTOS, type ChaveAssuntos } from '../assuntos'
 import { getSettings, saveSettings } from '../db'
 import { testarChave } from '../gemini'
-import { MODELOS, type Settings } from '../types'
+import { testarChaveGroq } from '../groq'
+import { MODELOS, MODELOS_GROQ, MODELOS_TRANSCRICAO_GROQ, type ProvedorId, type Settings } from '../types'
 
 export default function Configuracoes() {
   const [s, setS] = useState<Settings | null>(null)
-  const [verChave, setVerChave] = useState(false)
+  const [verChave, setVerChave] = useState({ groq: false, gemini: false })
   const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null)
-  const [testando, setTestando] = useState(false)
+  const [testando, setTestando] = useState<ProvedorId | null>(null)
   useEffect(() => { getSettings().then(setS) }, [])
   if (!s) return <p className="text-slate-500">Carregando…</p>
   const up = (patch: Partial<Settings>) => { setS({ ...s, ...patch }); setMsg(null) }
 
   async function salvar() {
-    await saveSettings({ ...s!, apiKey: s!.apiKey.trim() })
+    await saveSettings({ ...s!, apiKey: s!.apiKey.trim(), groqApiKey: s!.groqApiKey.trim() })
     setMsg({ ok: true, texto: 'Configurações salvas neste aparelho.' })
   }
-  async function testar() {
-    setTestando(true); setMsg(null)
+  async function testar(provedor: ProvedorId) {
+    setTestando(provedor); setMsg(null)
     try {
-      await testarChave(s!.apiKey.trim(), s!.modelo)
-      await saveSettings({ ...s!, apiKey: s!.apiKey.trim() })
-      setMsg({ ok: true, texto: 'Chave funcionando! Configurações salvas.' })
+      if (provedor === 'groq') await testarChaveGroq(s!.groqApiKey.trim())
+      else await testarChave(s!.apiKey.trim(), s!.modelo)
+      await saveSettings({ ...s!, apiKey: s!.apiKey.trim(), groqApiKey: s!.groqApiKey.trim() })
+      setMsg({ ok: true, texto: `Chave do ${provedor === 'groq' ? 'Groq' : 'Gemini'} funcionando! Configurações salvas.` })
     } catch (e) {
       setMsg({ ok: false, texto: (e as Error).message })
-    } finally { setTestando(false) }
+    } finally { setTestando(null) }
   }
 
   return (
@@ -33,25 +35,49 @@ export default function Configuracoes() {
       <div><p className="eyebrow mb-2">PREFERÊNCIAS DA ESCOLA</p><h1>Configurações</h1></div>
 
       <section className="card space-y-3">
-        <h2 className="font-semibold">Chave do Gemini (grátis)</h2>
-        <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-700">
-          <li>Abra o <a className="font-semibold text-blue-800 underline" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Google AI Studio</a> e entre com sua conta Google.</li>
-          <li>Toque em “Criar chave de API” e copie a chave.</li>
-          <li>Cole abaixo. Ela fica só neste aparelho.</li>
-        </ol>
+        <h2 className="font-semibold">Fornecedores de inteligência artificial</h2>
+        <label className="label" htmlFor="provedor">Provedor preferido</label>
+        <select id="provedor" className="field" value={s.provedorPreferido} onChange={e => up({ provedorPreferido: e.target.value as ProvedorId })}>
+          <option value="groq">Groq (padrão)</option><option value="gemini">Gemini</option>
+        </select>
+        <p className="text-sm text-slate-600">Basta uma das chaves. Se você cadastrar as duas, usaremos a outra automaticamente em caso de falta de cota, sobrecarga ou falha de conexão. As chaves ficam só neste aparelho.</p>
+      </section>
+
+      <section className="card space-y-3">
+        <h2 className="font-semibold">Groq</h2>
+        <p className="text-sm text-slate-600">Crie sua chave em <a className="font-semibold text-blue-800 underline" href="https://console.groq.com/keys" target="_blank" rel="noreferrer">Groq Console</a> e cole abaixo.</p>
+        <label className="label" htmlFor="chave-groq">Chave do Groq</label>
         <div className="flex gap-2">
-          <input className="field" type={verChave ? 'text' : 'password'} autoComplete="off" value={s.apiKey} onChange={e => up({ apiKey: e.target.value })} placeholder="Cole a chave aqui" aria-label="Chave da API" />
-          <button type="button" className="btn-secondary" onClick={() => setVerChave(v => !v)}>{verChave ? 'Ocultar' : 'Ver'}</button>
+          <input id="chave-groq" className="field" type={verChave.groq ? 'text' : 'password'} autoComplete="off" value={s.groqApiKey} onChange={e => up({ groqApiKey: e.target.value })} placeholder="Cole a chave do Groq" />
+          <button type="button" className="btn-secondary" onClick={() => setVerChave(v => ({ ...v, groq: !v.groq }))}>{verChave.groq ? 'Ocultar' : 'Ver'}<span className="sr-only"> chave do Groq</span></button>
         </div>
-        <div>
-          <label className="label" htmlFor="modelo">Modelo para redigir a ata</label>
-          <select id="modelo" aria-describedby="ajuda-modelo" className="field" value={s.modelo} onChange={e => up({ modelo: e.target.value })}>
-            {MODELOS.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
-            {!MODELOS.some(m => m.id === s.modelo) && <option value={s.modelo}>{s.modelo}</option>}
-          </select>
-          <p id="ajuda-modelo" className="mt-1 text-sm text-slate-600">Gemini 3.8 Flash é o padrão de melhor qualidade. Se o modelo escolhido estiver sem cota ou sobrecarregado, tentaremos os próximos; os modelos econômicos ficam como alternativa.</p>
+        <label className="label" htmlFor="modelo-groq">Modelo Groq para redigir a ata</label>
+        <select id="modelo-groq" className="field" value={s.modeloGroq} onChange={e => up({ modeloGroq: e.target.value })}>
+          {MODELOS_GROQ.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+        </select>
+        <label className="label" htmlFor="whisper-groq">Modelo Groq para transcrever</label>
+        <select id="whisper-groq" className="field" value={s.modeloTranscricaoGroq} onChange={e => up({ modeloTranscricaoGroq: e.target.value })}>
+          {MODELOS_TRANSCRICAO_GROQ.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+        </select>
+        <p className="text-sm text-slate-600">O Whisper transcreve em português com tempos, sem separar falantes. Você poderá atribuir quem falou a cada trecho na revisão. O plano gratuito aceita arquivos de até 25 MB; para reuniões maiores, grave e envie em partes.</p>
+        <button className="btn-secondary w-full" onClick={() => testar('groq')} disabled={!s.groqApiKey.trim() || !!testando}>{testando === 'groq' ? 'Testando Groq…' : 'Testar chave do Groq'}</button>
+      </section>
+
+      <section className="card space-y-3">
+        <h2 className="font-semibold">Gemini (reserva opcional)</h2>
+        <p className="text-sm text-slate-600">Crie uma chave no <a className="font-semibold text-blue-800 underline" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Google AI Studio</a> para ter uma reserva. Você também pode usar apenas o Gemini.</p>
+        <label className="label" htmlFor="chave-gemini">Chave do Gemini (opcional, reserva)</label>
+        <div className="flex gap-2">
+          <input id="chave-gemini" className="field" type={verChave.gemini ? 'text' : 'password'} autoComplete="off" value={s.apiKey} onChange={e => up({ apiKey: e.target.value })} placeholder="Cole a chave do Gemini" />
+          <button type="button" className="btn-secondary" onClick={() => setVerChave(v => ({ ...v, gemini: !v.gemini }))}>{verChave.gemini ? 'Ocultar' : 'Ver'}<span className="sr-only"> chave do Gemini</span></button>
         </div>
-        <button className="btn-secondary w-full" onClick={testar} disabled={!s.apiKey.trim() || testando}>{testando ? 'Testando…' : 'Testar a chave'}</button>
+        <label className="label" htmlFor="modelo">Modelo Gemini para redigir a ata</label>
+        <select id="modelo" aria-describedby="ajuda-modelo" className="field" value={s.modelo} onChange={e => up({ modelo: e.target.value })}>
+          {MODELOS.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+          {!MODELOS.some(m => m.id === s.modelo) && <option value={s.modelo}>{s.modelo}</option>}
+        </select>
+        <p id="ajuda-modelo" className="text-sm text-slate-600">Gemini 3.8 Flash é o padrão de melhor qualidade no Gemini. Se estiver sem cota ou sobrecarregado, tentaremos os próximos modelos; os econômicos ficam como alternativa.</p>
+        <button className="btn-secondary w-full" onClick={() => testar('gemini')} disabled={!s.apiKey.trim() || !!testando}>{testando === 'gemini' ? 'Testando Gemini…' : 'Testar chave do Gemini'}</button>
         <p className="text-xs text-slate-500">No plano gratuito o Google pode usar o conteúdo enviado para melhorar seus produtos. Prefira citar alunos só por iniciais.</p>
       </section>
 

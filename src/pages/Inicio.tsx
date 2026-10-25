@@ -18,7 +18,7 @@ export default function Inicio() {
   const [semChave, setSemChave] = useState(false)
   const nav = useNavigate()
   const recarregar = () => listAtas().then(setAtas)
-  useEffect(() => { recarregar(); getSettings().then(s => setSemChave(!s.apiKey.trim())) }, [])
+  useEffect(() => { recarregar(); getSettings().then(s => setSemChave(!s.apiKey.trim() && !s.groqApiKey.trim())) }, [])
 
   async function apagar(a: AtaRecord) {
     if (!confirm(`Apagar a ata nº ${a.meta.numero}/${a.meta.ano}? Isso não pode ser desfeito.`)) return
@@ -34,7 +34,7 @@ export default function Inicio() {
       </div>
       {semChave && (
         <div className="card border-amber-300 bg-amber-50 text-amber-900">
-          Antes de começar, cole sua chave gratuita do Gemini em{' '}
+          Antes de começar, cole uma chave do Groq ou do Gemini em{' '}
           <Link to="/config" className="font-semibold underline">Configurações</Link>.
         </div>
       )}
