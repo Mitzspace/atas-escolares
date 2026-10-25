@@ -4,8 +4,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const chaveGemini = process.env.GEMINI_API_KEY
-test.skip(!chaveGemini, 'Defina GEMINI_API_KEY no ambiente para executar os fluxos com Gemini.')
+const chaveGroq = process.env.GROQ_API_KEY
+test.skip(!chaveGroq, 'Defina GROQ_API_KEY no ambiente para executar os fluxos com Groq.')
 test.describe.configure({ mode: 'serial' })
 test.use({
   viewport: { width: 390, height: 844 },
@@ -34,8 +34,8 @@ type FalhaConferencia = { item: string; esperado: string; passou: false }
 
 function semCredenciais(valor: string) {
   return valor
-    .replaceAll(chaveGemini ?? '\0', '[CHAVE_REMOVIDA]')
-    .replace(/AIza[\w-]{20,}/g, '[CHAVE_REMOVIDA]')
+    .replaceAll(chaveGroq ?? '\0', '[CHAVE_REMOVIDA]')
+    .replace(/gsk_[\w-]{20,}/g, '[CHAVE_REMOVIDA]')
     .replace(/([?&]key=)[^&\s]+/gi, '$1[CHAVE_REMOVIDA]')
 }
 
@@ -98,15 +98,17 @@ async function configurarEscola(
   page: Page,
   pessoas: [string, string][] = equipe,
   assuntoPersonalizado = 'Entrega de avaliações às famílias',
-  modelo?: string,
 ) {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Atas de reunião' })).toBeVisible()
   await page.getByLabel('Navegação principal').getByRole('link', { name: 'Configurações' }).click()
-  // A chave fica apenas no campo password e no IndexedDB isolado deste contexto.
-  // Esta tela nunca é capturada e trace, vídeo e screenshots automáticos estão desligados.
-  await page.getByLabel('Chave da API').fill(chaveGemini!)
-  if (modelo) await page.getByLabel('Modelo para redigir a ata').selectOption(modelo)
+  // A chave Groq fica apenas no campo password e no IndexedDB isolado deste contexto.
+  // O Gemini é explicitamente limpo para impedir fallback; a tela não é capturada.
+  await page.getByLabel('Provedor preferido').selectOption('groq')
+  await page.getByLabel('Chave do Groq').fill(chaveGroq!)
+  await page.getByLabel('Chave do Gemini (opcional, reserva)').fill('')
+  await page.getByLabel('Modelo Groq para redigir a ata').selectOption('openai/gpt-oss-120b')
+  await page.getByLabel('Modelo Groq para transcrever').selectOption('whisper-large-v3')
   await page.getByLabel('Nome da escola').fill(escola)
   await page.getByLabel('Rede').fill('Secretaria Municipal de Educação')
   await page.getByLabel('Município/UF').fill('Campinas/SP')
@@ -144,7 +146,9 @@ async function selecionarAudio(page: Page, arquivo: string) {
   await page.getByLabel('Arquivo de áudio da reunião').setInputFiles(arquivo)
 }
 
-async function processarTranscricao(page: Page, cenario: string) {
+type AtribuicaoFalante = { pista: RegExp; nome: string }
+
+async function processarTranscricao(page: Page, cenario: string, atribuicoes: AtribuicaoFalante[]) {
   await page.getByRole('button', { name: 'Transcrever o áudio' }).click()
   await expect(page.getByRole('heading', { name: 'Transcrevendo o áudio' })).toBeVisible()
   await captura(page, cenario, 'transcrevendo')
@@ -154,16 +158,27 @@ async function processarTranscricao(page: Page, cenario: string) {
     elementos.map(elemento => (elemento as HTMLTextAreaElement).value),
   )
   fs.writeFileSync(path.join(saida, `transcricao-${cenario}.txt`), `${falasTranscritas.join('\n')}\n`)
-  const falante = page.getByLabel(/^Nome de /).first()
-  if (await falante.count()) {
-    await falante.fill('Maria Souza')
-    await falante.press('Tab')
+  const usados = new Set<number>()
+  const atribuicoesFeitas: { trecho: number; nome: string; texto: string }[] = []
+  for (const atribuicao of atribuicoes) {
+    const indice = falasTranscritas.findIndex((fala, i) => !usados.has(i) && atribuicao.pista.test(fala))
+    if (indice < 0) throw new Error(`Não encontrei trecho para atribuir a ${atribuicao.nome}: ${atribuicao.pista}`)
+    usados.add(indice)
+    const campoFalante = page.getByLabel(`Falante do trecho ${indice + 1}`, { exact: true })
+    await campoFalante.fill(atribuicao.nome)
+    await campoFalante.press('Tab')
+    await expect(campoFalante).toHaveValue(atribuicao.nome)
+    atribuicoesFeitas.push({ trecho: indice + 1, nome: atribuicao.nome, texto: falasTranscritas[indice] })
   }
+  fs.writeFileSync(path.join(saida, `atribuicoes-${cenario}.json`), `${JSON.stringify(atribuicoesFeitas, null, 2)}\n`)
+  await expect(page.getByText(/^Transcrição: Groq · whisper-large-v3$/)).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: /Whisper n[aã]o separa falantes/ })).toBeVisible()
   await captura(page, cenario, 'transcricao-revisada')
   await page.getByRole('button', { name: 'Gerar a ata' }).click()
   await expect(page.getByRole('heading', { name: 'Redigindo a ata' })).toBeVisible()
   await captura(page, cenario, 'gerando-ata')
   await esperarResultadoProcessamento(page, page.locator('#texto-ata'), 'geração da ata', cenario)
+  await expect(page.getByText(/^Redação: Groq · openai\/gpt-oss-120b$/)).toBeVisible()
 }
 
 async function salvarPendenciasProblemas(page: Page, cenario: string) {
@@ -173,15 +188,6 @@ async function salvarPendenciasProblemas(page: Page, cenario: string) {
   const textoConferir = await conferir.count() ? await conferir.locator('xpath=..').innerText() : ''
   const textoProblemas = await problemas.count() ? await problemas.locator('xpath=..').innerText() : ''
   fs.writeFileSync(path.join(saida, `pendencias-problemas-${cenario}.json`), `${JSON.stringify({ pendencias, paraConferir: textoConferir, problemasFormato: textoProblemas }, null, 2)}\n`)
-}
-
-async function completarUmaPendencia(page: Page) {
-  const primeira = page.locator('section[aria-label="Completar pendências"] .card').first()
-  if (!(await primeira.count())) return
-  const campo = primeira.locator('input').first()
-  if (await campo.getAttribute('type') === 'time') await campo.fill('15:10')
-  else await campo.fill('Confirmado em revisão pela equipe')
-  await primeira.getByRole('button', { name: 'Preencher' }).click()
 }
 
 async function salvarTextoFinal(page: Page, cenario: string) {
@@ -281,9 +287,12 @@ test('2. reunião pedagógica: upload, revisão, ata e PDF', async ({ page }) =>
     }
     await selecionarAudio(page, audioPedagogico)
     await captura(page, cenario, 'dados')
-    await processarTranscricao(page, cenario)
+    await processarTranscricao(page, cenario, [
+      { pista: /boa tarde|reuni[aã]o pedag[oó]gica/i, nome: 'Maria Souza' },
+      { pista: /refor[cç]o|contraturno|Carlos Mendes/i, nome: 'Carlos Mendes' },
+      { pista: /Ótimo! Eu vou mandar o regulamento/i, nome: 'Clara Dias' },
+    ])
     await salvarPendenciasProblemas(page, cenario)
-    await completarUmaPendencia(page)
 
     const textoAta = page.locator('#texto-ata')
     const checkClara = page.locator('label').filter({ hasText: 'Clara Dias' }).locator('input[type="checkbox"]')
@@ -306,12 +315,12 @@ test('2. reunião pedagógica: upload, revisão, ata e PDF', async ({ page }) =>
     await conferencia(texto, cenario, falhas, 'acompanhamento de Joana Alves', /Joana Alves/i)
     await conferencia(texto, cenario, falhas, 'Feira de Ciências', /Feira de Ci[eê]ncias/i)
     await conferencia(texto, cenario, falhas, 'Feira em vinte e oito de novembro', /vinte e oito de novembro|28 de novembro/i)
-    await conferencia(texto, cenario, falhas, 'votação de onze a um', /onze votos? a um|onze votos? a favor e um voto contr[aá]rio|onze votos? favor[aá]veis e um voto contr[aá]rio|11\s*(?:x|a)\s*1/i)
+    await conferencia(texto, cenario, falhas, 'votação de onze a um', /onze votos? a um|onze votos? a favor e um voto contr[aá](?:rio)?|onze votos? favor[aá]veis e um voto contr[aá]rio|11\s*(?:x|a)\s*1/i)
     await conferencia(texto, cenario, falhas, 'Carlos contrário à Feira', /Carlos Mendes.{0,120}(?:ponderou|manifestou).{0,120}(?:diverg[eê]ncia|s[aá]bado.{0,80}(?:comprometeria|prejudicaria)|(?:comprometeria|prejudicaria).{0,80}(?:s[aá]bado|fim de semana)).{0,120}(?:s[aá]bado|feira|evento)|contr[aá]rio.{0,100}Carlos Mendes/i)
     await conferencia(texto, cenario, falhas, 'Clara envia regulamento na semana seguinte', /a cargo d[eo] Clara Dias.{0,80}prazo: (?:at[eé] )?(?:a )?(?:semana seguinte|pr[oó]xima semana|semana que vem)|Clara Dias.{0,100}regulamento.{0,100}(?:semana seguinte|pr[oó]xima semana|semana que vem)/i)
     await conferencia(texto, cenario, falhas, 'conselho de classe em doze de novembro', /conselho de classe.{0,100}doze de novembro|conselho de classe.{0,100}12 de novembro/i)
     await conferencia(texto, cenario, falhas, 'conselho de classe às oito horas', /conselho de classe.{0,100}oito horas|conselho de classe.{0,100}8 horas/i)
-    await conferencia(texto, cenario, falhas, 'sem aula em dois de novembro', /(?:sem aula|suspens[aã]o das aulas).{0,100}(?:(?:no )?dia |em )?(?:dois de novembro|2 de novembro)|(?:dois de novembro|2 de novembro).{0,100}(?:n[aã]o haver[aá] aula|suspens[aã]o das aulas)/i)
+    await conferencia(texto, cenario, falhas, 'sem aula em dois de novembro', /(?:sem aula|suspens[aã]o das aulas).{0,100}(?:(?:no )?dia |em )?(?:dois de novembro|2 de novembro)|(?:dois de novembro|2 de novembro).{0,100}(?:n[aã]o (?:haver[aá]|haveria|tem) aula|suspens[aã]o das aulas)/i)
     await conferencia(texto, cenario, falhas, 'café não aparece', /caf[eé]/i, false)
     const encaminhamentoContato = texto.match(/(?:primeiro|segundo|terceiro|quarto),[^;]*(?:secretaria|fam[ií]lia|respons[aá]veis)[^;]*;/i)?.[0] ?? ''
     await conferencia(encaminhamentoContato, cenario, falhas, 'secretaria escolar responsável pelo contato com a família conforme áudio', /(?:contato|entrar em contato).{0,140}(?:fam[ií]lia|respons[aá]veis).{0,120}a cargo d[ae] secretaria(?: escolar)?/i)
@@ -336,7 +345,7 @@ test('4. pais e responsáveis: equipe, três famílias, assuntos e PDF', async (
   prepararSaida(cenario)
   registrarLogs(page, cenario)
   try {
-    await configurarEscola(page, equipePais, 'Feira de Ciências e voluntariado', 'gemini-3.5-flash-lite')
+    await configurarEscola(page, equipePais, 'Feira de Ciências e voluntariado')
     await iniciarNovaAta(page, cenario, /Pais e responsáveis/)
     await preencherDadosComuns(page, '19:00', '19:50')
     await page.locator('#Presidiu-nome').fill('Maria Souza')
@@ -377,7 +386,11 @@ test('4. pais e responsáveis: equipe, três famílias, assuntos e PDF', async (
     await assuntoProprio.click()
     await selecionarAudio(page, '/home/william/audio-teste-ata/reuniao-pais-teste.mp3')
     await captura(page, cenario, 'dados')
-    await processarTranscricao(page, cenario)
+    await processarTranscricao(page, cenario, [
+      { pista: /s[aã]o 19 horas|reuni[aã]o de pais|Maria Souza/i, nome: 'Maria Souza' },
+      { pista: /A gente deve aguardar a orienta[cç][aã]o da escola sobre os hor[aá]rios/i, nome: 'Ana Costa' },
+      { pista: /Do quinto ano o bairro ofere[cç]o ajuda na feira/i, nome: 'Beatriz Lima' },
+    ])
     await salvarPendenciasProblemas(page, cenario)
     const texto = await salvarTextoFinal(page, cenario)
     const titulo = await page.getByRole('heading', { level: 1 }).first().innerText()
@@ -396,12 +409,14 @@ test('4. pais e responsáveis: equipe, três famílias, assuntos e PDF', async (
     await conferencia(texto, cenario, falhas, 'Feira de Ciências em 28 de novembro', /Feira de Ci[eê]ncias.{0,100}vinte e oito de novembro|Feira de Ci[eê]ncias.{0,100}28 de novembro/i)
     await conferencia(texto, cenario, falhas, 'Ana Costa se voluntaria', /Ana Costa.{0,120}(?:tamb[eé]m se voluntariou|volunt[aá]ria)/i)
     await conferencia(texto, cenario, falhas, 'Beatriz Lima oferece ajuda voluntária', /Beatriz Lima.{0,120}(?:ofereceu ajuda|ofereceu aux[ií]lio|volunt[aá]ria)/i)
-    await conferencia(texto, cenario, falhas, 'consenso para reunião preparatória em 10 de novembro', /consenso.{0,220}(?:reuni[aã]o preparat[oó]ria|preparar a feira).{0,160}(?:dez|10) de novembro/i)
-    await conferencia(texto, cenario, falhas, 'Clara participa da reunião preparatória em 10 de novembro', /respons[aá]veis volunt[aá]rias reunir(?:am-se|ão) com a professora de Ci[eê]ncias Clara Dias.{0,100}prazo: dez de novembro/i)
+    await conferencia(texto, cenario, falhas, 'consenso para reunião preparatória em 10 de novembro', /consenso.{0,250}(?:reuniram-se.{0,100}Clara Dias.{0,60}(?:dez|10) de novembro.{0,80}preparar a feira|preparar a feira.{0,100}(?:dez|10) de novembro)/i)
+    await conferencia(texto, cenario, falhas, 'Clara participa da reunião preparatória em 10 de novembro', /Ana Costa e Beatriz Lima.{0,180}(?:reuniram|reunir[aã]o).{0,100}Clara Dias.{0,60}(?:dez|10) de novembro.{0,80}preparar a feira/i)
     await conferencia(texto, cenario, falhas, 'pergunta de estacionamento mencionada', /estacionamento/i)
     await conferencia(texto, cenario, falhas, 'encerramento às 19h50', /dezenove horas e cinquenta minutos|19h50/i)
+    await conferencia(texto, cenario, falhas, 'pergunta de Ana e resposta de Joana sobre a recuperação', /Ana Costa.{0,180}(?:perguntou|questionou|indagou).{0,100}recupera[cç][aã]o.{0,250}Joana Alves.{0,180}(?:confirmou|respondeu|informou).{0,100}(?:oito a doze|8 a 12) de dezembro/i)
     await conferencia(texto, cenario, falhas, 'não inventa exposição de resultados pedagógicos', /Joana Alves.{0,150}(?:apresentou|exp[oõ]s|relatou).{0,120}(?:resultados|desempenho|notas)/i, false)
     await conferencia(texto, cenario, falhas, 'pergunta de estacionamento não vira decisão inventada', /estacionamento.{0,120}(?:decidiu-se|fica decidido|foi aprovado|ser[aá] implantado)/i, false)
+    await conferencia(texto, cenario, falhas, 'erro de transcrição “bairro” não vira sujeito da oferta', /o bairro oferecia ajuda/i, false)
     await conferencia(texto, cenario, falhas, 'não atribui consenso à regra do portão', /toler[aâ]ncia.{0,120}(?:por consenso|consensualmente)/i, false)
     await conferencia(texto, cenario, falhas, 'texto em bloco único', /\r|\n/, false)
     const assinaturas = await page.getByRole('heading', { name: 'Assinam' }).locator('xpath=..').innerText()
