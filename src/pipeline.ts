@@ -1,4 +1,4 @@
-import { renderAta, type MeetingMetadata } from './ata-api'
+import { anonimizarAtaExtraida, renderAta, type MeetingMetadata } from './ata-api'
 import { deleteAudio, getAudio, getAta, getSettings, patchAta } from './db'
 import type { Progresso } from './gemini'
 import { redigirComProvedores, transcreverComProvedores } from './provedores'
@@ -32,8 +32,8 @@ export async function rodarGeracaoAta(id: string, onProgress: Progresso) {
     const settings = await getSettings()
     await patchAta(id, { status: 'processando', erro: undefined })
     const resultado = await redigirComProvedores({ settings, meta: ata.meta, transcript: ata.transcript, onProgress })
-    const extraida = resultado.dados
-    const renderizada = renderAta(ata.meta as MeetingMetadata, extraida)
+    const extraida = anonimizarAtaExtraida(ata.meta, ata.transcript, resultado.dados)
+    const renderizada = renderAta(ata.meta as MeetingMetadata, extraida, ata.transcript)
     await patchAta(id, { status: 'ata', extraida, renderizada, modeloRedacao: resultado.modelo, provedorRedacao: resultado.provedor, textoEditado: undefined })
     onProgress('Ata pronta', 1, resultado.modelo, resultado.provedor)
   } catch (e) {

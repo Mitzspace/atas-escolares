@@ -115,7 +115,7 @@ export function aplicarPresenca(ata: AtaRecord, lista: MeetingMetadata['particip
 function recalcular(ata: AtaRecord, participantes: MeetingMetadata['participantes']) {
   const meta = { ...ata.meta, participantes }
   const antigo = ata.renderizada!.texto
-  const renderizada = renderAta(meta, ata.extraida!)
+  const renderizada = renderAta(meta, ata.extraida!, ata.transcript)
   const novo = renderizada.texto
   const editado = ata.textoEditado
   if (editado === undefined || editado === antigo) return { meta, renderizada, texto: novo, textoPreservado: true }

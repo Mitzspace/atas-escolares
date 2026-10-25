@@ -1,5 +1,9 @@
 import { TIPOS_ATA, listarOrientados, type AtaExtraida, type AtaRenderizada, type Categoria, type MeetingMetadata, type Participante, type Pessoa, type TipoAta } from './types';
 import { dataPorExtenso, horaPorExtenso, numeroPorExtenso, ordinalPorExtenso } from './extenso';
+import { iniciais, parseVinculo } from './identificacao';
+export { iniciais, parseVinculo } from './identificacao';
+import { anonimizarRenderizada } from './anonimizacao';
+import type { TranscriptSegment } from './types';
 import { textoLivreParaPadrao } from './numeros';
 import { extrairMarcadores } from './validate';
 
@@ -122,18 +126,6 @@ function generoDoCargo(cargo: string): Genero3 {
 }
 const flexao = (g: Genero3, m: string, f: string, n: string) => (g === 'm' ? m : g === 'f' ? f : n);
 
-const PREPOSICOES_NOME = new Set(['de', 'da', 'do', 'das', 'dos', 'e']);
-/** "Pedro Henrique Lima" -> "P.H.L."; nomes que já são iniciais ficam como estão. */
-export function iniciais(nome: string): string {
-  const t = limpar(nome);
-  if (/^(?:\p{Lu}\.\s*)+$/u.test(t)) return t.replace(/\s+/g, '');
-  return t
-    .split(' ')
-    .filter((w) => w && !PREPOSICOES_NOME.has(w.toLocaleLowerCase('pt-BR')))
-    .map((w) => `${w.charAt(0).toLocaleUpperCase('pt-BR')}.`)
-    .join('');
-}
-
 /** "5º ano B" -> "do 5º ano B"; "3ª série" -> "da 3ª série"; "Maternal II" -> "da turma Maternal II". */
 function turmaTxt(turma: string): string {
   const t = limpar(turma);
@@ -141,13 +133,6 @@ function turmaTxt(turma: string): string {
   if (/\b(ano|per[ií]odo|ciclo|n[ií]vel|grupo|maternal|jardim)\b/i.test(t)) return `do ${t}`;
   if (/\b(s[ée]rie|turma|classe|etapa|fase|sala|creche)\b/i.test(t)) return `da ${t}`;
   return `da turma ${t}`;
-}
-
-/** Vínculo do responsável: "aluno Pedro Henrique, 5º ano B" -> { rotulo: 'aluno', nome: 'Pedro Henrique', turma: '5º ano B' }. */
-export function parseVinculo(v: string) {
-  const m = /^\s*(?:(aluno\(a\)|aluno|aluna|estudante)\s+)?([^,]+?)\s*(?:,\s*(.+?))?\s*$/i.exec(v);
-  if (!m) return null;
-  return { rotulo: (m[1] ?? 'aluno(a)').toLocaleLowerCase('pt-BR'), nome: m[2], turma: m[3] ?? '' };
 }
 
 /** "do aluno P.H., do 5º ano B" / "pela aluna Ana, da 3ª série" (nome em iniciais se a anonimização estiver ativa). */
@@ -504,7 +489,7 @@ function assinatura(p: Participante, meta: MeetingMetadata): Pessoa {
 }
 
 /** Monta a ata final: abertura e encerramento por código, corpo do LLM, números por extenso. */
-export function renderAta(meta: MeetingMetadata, extraida: AtaExtraida): AtaRenderizada {
+export function renderAta(meta: MeetingMetadata, extraida: AtaExtraida, transcript: TranscriptSegment[] = []): AtaRenderizada {
   const pres = presentes(meta);
   const aus = ausentes(meta, pres);
 
@@ -532,11 +517,11 @@ export function renderAta(meta: MeetingMetadata, extraida: AtaExtraida): AtaRend
     }
   }
 
-  return {
+  return anonimizarRenderizada(meta, transcript, {
     titulo: tituloDoc(meta),
     cabecalho: [meta.escola, meta.rede, meta.municipioUf].map((s) => limpar(s).toLocaleUpperCase('pt-BR')).filter(Boolean),
     texto,
     assinaturas: pres.map((p) => assinatura(p, meta)),
     pendencias,
-  };
+  });
 }

@@ -1,4 +1,4 @@
-import { iniciais, parseVinculo } from './render';
+import { iniciais, parseVinculo } from './identificacao';
 import { listarOrientados, type MeetingMetadata, type Participante, type TipoAta, type TranscriptSegment } from './types';
 
 const dataBr = (iso: string) => iso.split('-').reverse().join('/');

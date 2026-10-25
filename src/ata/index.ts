@@ -24,3 +24,5 @@ export {
   dataCurtaPorExtenso,
 } from './extenso';
 export { numerosParaExtenso, abreviacoesPorExtenso, textoLivreParaPadrao } from './numeros';
+
+export { anonimizarAtaExtraida } from './anonimizacao';
