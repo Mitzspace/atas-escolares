@@ -93,3 +93,18 @@ it('registra todos os modelos Gemini efetivos em uma transcrição por faixas', 
   })
   expect(await transcreverComProvedores({ settings: { ...settings, groqApiKey: '' }, meta, file })).toMatchObject({ modelo: 'gemini-3.6-flash, gemini-3.8-flash' })
 })
+
+
+it('usa Gemini automaticamente para áudio acima de 25 MB com chave disponível', async () => {
+  const grande = new File(['x'], 'grande.mp3')
+  Object.defineProperty(grande, 'size', { value: 25_000_001 })
+  vi.mocked(transcreverAudio).mockImplementation(async opts => {
+    opts.onProgress?.('Enviando o áudio…', 0.05)
+    opts.onModeloUsado?.('gemini-3.5-transcribe')
+    return transcript
+  })
+  const progresso = vi.fn()
+  expect(await transcreverComProvedores({ settings, meta, file: grande, onProgress: progresso })).toMatchObject({ provedor: 'gemini' })
+  expect(fetchMock).not.toHaveBeenCalled()
+  expect(progresso).toHaveBeenCalledWith(expect.stringContaining('Áudio acima de 25 MB'), 0.05, undefined, 'gemini')
+})

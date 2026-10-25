@@ -1,4 +1,5 @@
 import { ataResponseSchema, buildAtaPrompt, type AtaExtraida, type MeetingMetadata, type TranscriptSegment } from './ata-api'
+import { dividirAudio, deslocarTempos } from './audio-partes'
 import type { Progresso } from './gemini'
 import { ErroProvedor, MODELOS_GROQ, MODELOS_TRANSCRICAO_GROQ } from './types'
 
@@ -53,8 +54,19 @@ export function parseTranscricaoGroq(resposta: unknown): TranscriptSegment[] {
   return segmentos
 }
 
-export async function transcreverGroq(opts: { apiKey: string; modelo: string; file: File; onProgress?: Progresso }) {
-  if (opts.file.size > LIMITE_AUDIO_GROQ_BYTES) throw new ErroProvedor('conteudo', 'O Groq aceita áudios de até 25 MB no plano gratuito. A divisão automática de áudio não está disponível neste app. Grave e envie a reunião em partes menores de 25 MB.')
+export async function transcreverGroq(opts: { apiKey: string; modelo: string; file: File; onProgress?: Progresso }): Promise<{ transcript: TranscriptSegment[]; modeloUsado: string }> {
+  if (opts.file.size > LIMITE_AUDIO_GROQ_BYTES) {
+    opts.onProgress?.('Preparando o áudio em partes de dez minutos…', 0.1, opts.modelo, 'groq')
+    const transcript: TranscriptSegment[] = []
+    let indice = 0
+    for await (const parte of dividirAudio(opts.file)) {
+      indice++
+      opts.onProgress?.(`Transcrevendo parte ${indice} de ${parte.total} com Whisper…`, 0.2 + 0.7 * (indice - 1) / parte.total, opts.modelo, 'groq')
+      const resultado = await transcreverGroq({ ...opts, file: parte.arquivo, onProgress: undefined })
+      transcript.push(...deslocarTempos(resultado.transcript, parte.inicio))
+    }
+    return { transcript, modeloUsado: opts.modelo }
+  }
   if (!formatos.has(opts.file.name.split('.').pop()?.toLowerCase() ?? '')) throw new ErroProvedor('conteudo', 'Formato não aceito pelo Groq. Use mp3, m4a, wav, webm, ogg, flac, mp4, mpeg ou mpga.')
   if (!MODELOS_TRANSCRICAO_GROQ.some(m => m.id === opts.modelo)) throw new ErroProvedor('conteudo', 'Escolha um modelo Whisper disponível em Configurações.')
   const form = new FormData()

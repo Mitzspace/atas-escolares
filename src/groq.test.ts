@@ -1,3 +1,4 @@
+import * as audioPartes from './audio-partes'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LIMITE_AUDIO_GROQ_BYTES, parseTranscricaoGroq, redigirGroq, schemaAtaGroq, testarChaveGroq, transcreverGroq, validarAtaGroq } from './groq'
 import type { MeetingMetadata } from './ata-api'
@@ -14,7 +15,7 @@ const apiKey = 'chave-ficticia-testes'
 const resposta = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>
 beforeEach(() => { fetchMock = vi.fn<typeof fetch>(); vi.stubGlobal('fetch', fetchMock) })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 it('envia Whisper em português com verbose_json e segmentos, sem forjar falantes', async () => {
   fetchMock.mockResolvedValue(resposta({ segments: [
@@ -48,11 +49,20 @@ it('aceita o modelo Turbo configurado e o limite exato de 25 MB', async () => {
   expect((fetchMock.mock.calls[0][1]?.body as FormData).get('model')).toBe('whisper-large-v3-turbo')
 })
 
-it('recusa áudio acima do limite antes do upload, sem cortar bytes de mídia', async () => {
+it('divide áudio grande sem reserva, transcreve em sequência e ajusta tempos', async () => {
   const grande = new File(['x'], 'audio.mp3')
   Object.defineProperty(grande, 'size', { value: LIMITE_AUDIO_GROQ_BYTES + 1 })
-  await expect(transcreverGroq({ apiKey, modelo: 'whisper-large-v3', file: grande })).rejects.toThrow(/25 MB.*partes menores/)
-  expect(fetchMock).not.toHaveBeenCalled()
+  vi.spyOn(audioPartes, 'dividirAudio').mockImplementation(async function* () {
+    yield { arquivo: file, inicio: 0, total: 2 }
+    yield { arquivo: file, inicio: 600, total: 2 }
+  })
+  fetchMock.mockResolvedValueOnce(resposta({ segments: [{ start: 0, end: 3, text: 'Primeira.' }] }))
+    .mockResolvedValueOnce(resposta({ segments: [{ start: 2, end: 4, text: 'Segunda.' }] }))
+  const progresso = vi.fn()
+  const resultado = await transcreverGroq({ apiKey, modelo: 'whisper-large-v3', file: grande, onProgress: progresso })
+  expect(resultado.transcript.map(s => [s.start, s.end])).toEqual([['00:00', '00:03'], ['10:02', '10:04']])
+  expect(fetchMock).toHaveBeenCalledTimes(2)
+  expect(progresso).toHaveBeenCalledWith(expect.stringContaining('parte 2 de 2'), expect.any(Number), 'whisper-large-v3', 'groq')
 })
 
 it.each([{}, { text: 'sem segmentos' }, { segments: [] }, { segments: [{ start: -1, end: 2, text: 'x' }] },
