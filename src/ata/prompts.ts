@@ -108,9 +108,9 @@ const PRODUZIR: Record<TipoAta, string> = {
 Quando alunos participaram da reunião, registre o que disseram atribuindo a fala ao aluno (por nome ou iniciais, conforme a regra de anonimização).`,
   pais: `O QUE PRODUZIR
 - "itens": relatos somente dos itens efetivamente tratados na transcrição, na ordem, com "pauta" = número do item (começando em 1). Pauta 0 = assuntos fora da pauta. Cada "relato" começa com "No primeiro item da pauta," (segundo, terceiro...; para pauta 0, "Em assuntos gerais,") e conta os comunicados, esclarecimentos e orientações da escola às famílias.
-- "manifestacoes": as dúvidas, sugestões e demandas apresentadas pelos responsáveis, de forma geral (ex.: "os responsáveis questionaram o horário de saída"). NÃO identifique quem perguntou e NÃO registre casos individuais de alunos (notas, comportamento, saúde, situação familiar), mesmo que tenham sido mencionados: se um responsável pediu conversa individual, registre apenas "um responsável solicitou atendimento individual".
+- "manifestacoes": dúvidas, sugestões e demandas efetivamente apresentadas. Em perguntas gerais sobre calendário, horários e organização, preserve a pergunta concreta, quem a fez quando identificado na revisão e a resposta explícita da escola no relato do mesmo item. Não substitua a troca por "os responsáveis questionaram os horários". NÃO registre casos individuais de alunos (notas, comportamento, saúde, situação familiar), mesmo que tenham sido mencionados: nesses casos não identifique o responsável; se alguém pediu conversa individual, registre apenas "um responsável solicitou atendimento individual".
 - "deliberacoes": somente decisões efetivamente tomadas, distinguindo decisão coletiva de comunicado ou reafirmação de regra vigente. Preencha "votacao" só quando o resultado estiver explicitamente associado àquela decisão, nunca por existir consenso sobre outro assunto.
-- "encaminhamentos": providências combinadas, com "responsavel" e "prazo" só se ditos.
+- "encaminhamentos": providências efetivamente assumidas, não perguntas ou anúncios vagos de análise posterior. Assunto explicitamente remetido para fora da pauta fica no relato com "pauta": 0, sem criar tarefa. Preencha "responsavel" e "prazo" só se ditos; a ausência desses campos não autoriza inventar o compromisso.
 - "pendencias": a descrição de cada marcação [PENDENTE: ...], [trecho inaudível] ou [confirmar: ...] que você usou nos textos.
 - Omita "orientacoes" e "cienciaOrientado".`,
   orientacao: `O QUE PRODUZIR
@@ -130,6 +130,19 @@ const SYSTEM_REGRAS = `REGRAS DE REDAÇÃO (padrão de ata escolar)
 4. Rótulos genéricos como "Falante" ou "Falante 1" podem reunir vozes diferentes: o Whisper não separa falantes. Atribua a fala pelo contexto e pela lista de participantes somente quando houver apresentação explícita ("sou Rui Dias") ou referência contextual inequívoca. Nunca associe todos os trechos com o mesmo rótulo à mesma pessoa, nem deduza autoria pela pauta ou pela presença na lista. Atribua falas pelo nome e use exatamente o cargo da lista de pessoas, sem acrescentar ou transformar o cargo em "professor" ou "professora" (ex.: Joana Alves — coordenadora pedagógica → "a coordenadora pedagógica Joana Alves informou que..."). Não infira outro cargo pela fala ou pela profissão presumida. Se o falante não foi identificado, escreva "um participante" ou "uma participante" — nunca adivinhe quem falou.
 5. Relate apenas o que consta na transcrição. Ignore conversas paralelas, brincadeiras, ruídos e falas fora de propósito, salvo se levaram a uma decisão. Seja proporcional ao conteúdo efetivamente registrado, sem quantidade mínima de frases por item. Se só houver saudação ou anúncio da reunião, não desenvolva os assuntos da pauta.
 6. Preserve a grafia e as maiúsculas/minúsculas dos itens da pauta exatamente como informados pela usuária, inclusive nomes de eventos e projetos; não altere a inicial (ex.: "feira de Ciências" permanece "feira de Ciências").
+
+AUTORIA E FIDELIDADE POR TRECHO
+- O campo speaker de cada trecho foi fornecido na transcrição revisada. Quando contém um nome explícito, preserve essa autoria e sua ligação com o texto e os tempos do MESMO trecho; a atribuição da revisão tem precedência sobre inferências de cargo ou de quem conduzia a reunião. Não transfira falas para a direção, a secretaria, o último nome citado ou a pessoa que apresentou o item.
+- Identificação explícita vale somente para o trecho identificado. Um trecho seguinte com "Falante" continua sem autoria informada: não herde automaticamente o nome anterior. Só resolva o genérico por apresentação ou contexto inequívoco da própria troca; se não houver base, mantenha "um participante" ou [confirmar: autoria da fala].
+- Em fala na primeira pessoa com tarefa, "eu" é o speaker daquele trecho quando identificado. Se Clara Dias estiver no speaker de "Eu vou mandar o regulamento", o relato e o responsável pelo envio são Clara Dias, nunca Joana Alves por ser coordenadora. Se essa fala estiver apenas como "Falante" e não houver contexto inequívoco, omita "responsavel" e sinalize [confirmar: responsável pelo envio do regulamento], sem adivinhar.
+- Preserve a pergunta e a resposta como uma troca: se Ana perguntou se a recuperação seria de oito a doze de dezembro e se aguardaria orientação sobre horários, e Joana confirmou esse período, registre a pergunta e a confirmação de Joana. Não conclua que horários específicos foram informados ou que houve promessa de envio de horários se isso não foi dito.
+- Trechos corrompidos pelo reconhecimento de voz não viram fatos literais sem sentido. "Do quinto ano o bairro ofereço ajuda" não sustenta "o bairro oferecia ajuda". Não crie um sujeito nem recupere um nome apenas porque ele consta no cadastro. Use a atribuição do trecho ou uma apresentação explícita, se inequívoca; caso contrário registre uma oferta de ajuda com autoria não identificada e [confirmar: trecho da oferta de ajuda], sem reconstruir palavras incertas como fatos.
+- Preserve contagens e resultados de votação somente no assunto em que foram falados. Onze votos favoráveis e um contrário, atribuídos explicitamente a Carlos, não identificam o autor de falas vizinhas sem speaker e não tornam a coordenadora responsável por tarefas de outra pessoa.
+
+ASSUNTO FORA DA PAUTA NÃO É TAREFA
+- "A pergunta do estacionamento fica fora da pauta e será verificada" é uma resposta que remete a questão para análise posterior, sem atribuir uma tarefa nesta reunião. Registre apenas esse fato em "itens", com "pauta": 0. Não crie um encaminhamento "verificar mudança nas vagas do estacionamento", nem pendências artificiais de responsável e prazo para esse suposto encaminhamento.
+- Pergunta, sugestão ou futuro impessoal ("será verificada") não bastam para extrair um compromisso. Exija uma ação efetivamente assumida ou deliberada. Marcadores [PENDENTE] não substituem a evidência de que a tarefa foi combinada.
+- Não descarte ações só porque faltou responsável ou prazo: se uma fala distinta efetivamente assumir a tarefa (por exemplo, "Paulo verificará as vagas até sexta-feira"), registre essa ação e apenas os dados explicitamente confirmados. Sem essa fala distinta, a questão permanece fora da pauta, sem tarefa.
 
 FIDELIDADE DE DADOS E DELIBERAÇÕES
 - Preserve no relato ou encaminhamento correspondente todos os horários, datas, durações e limites explicitamente ditos que definam regras, pedidos ou ações. Resumir o pedido não autoriza omitir esses dados; escreva-os por extenso sem alterar o valor ou a que fato se referem.
@@ -182,6 +195,18 @@ function anonimizacao(meta: MeetingMetadata): string {
   return meta.anonimizarAlunos ? ANON_SIM : ANON_NAO;
 }
 
+/** A autoria informada é local ao trecho; rótulos genéricos nunca viram nomes por propagação. */
+function trechosRevisados(transcript: TranscriptSegment[]): string[] {
+  return transcript.flatMap((s, i) => {
+    const generico = !s.speaker.trim() || /^(?:falante|speaker)(?:\s*\d+)?(?:\s*\(.*\))?$/iu.test(s.speaker.trim());
+    const fala = `[${s.start}] ${s.speaker}: ${s.text}`;
+    return generico ? [fala] : [
+      `Autoria informada do trecho ${i + 1} (${s.start}–${s.end}): ${JSON.stringify(s.speaker)}; vale somente para este trecho.`,
+      fala,
+    ];
+  });
+}
+
 /** Prompts (sistema + usuário) para gerar o corpo da ata em JSON (`ataResponseSchema`). */
 export function buildAtaPrompt(
   meta: MeetingMetadata,
@@ -209,7 +234,7 @@ export function buildAtaPrompt(
     `Anonimizar alunos: ${meta.anonimizarAlunos ? 'SIM' : 'não'}`,
     '',
     'TRANSCRIÇÃO (formato [MM:SS] falante: fala)',
-    ...transcript.map((s) => `[${s.start}] ${s.speaker}: ${s.text}`),
+    ...trechosRevisados(transcript),
     '',
     'Redija o corpo da ata em JSON conforme as regras do sistema.',
   );

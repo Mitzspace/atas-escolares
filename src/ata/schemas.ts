@@ -27,11 +27,11 @@ export const ataResponseSchema: object = {
         properties: {
           pauta: {
             type: 'INTEGER',
-            description: 'Número do item da pauta (começa em 1). Use 0 para assuntos tratados fora da pauta.',
+            description: 'Número do item da pauta (começa em 1). Use 0 para assuntos tratados fora da pauta, inclusive perguntas remetidas para análise posterior sem tarefa assumida.',
           },
           relato: {
             type: 'STRING',
-            description: 'Texto corrido, sem quebras de linha, pretérito perfeito, terceira pessoa, números por extenso. Preserve horários, datas, durações e limites explicitamente ditos no assunto, sem omitir nem trocar seus valores. Informe de regra vigente não é aprovação coletiva.',
+            description: 'Texto corrido, sem quebras de linha, pretérito perfeito, terceira pessoa, números por extenso. Preserve horários, datas, durações e limites explicitamente ditos no assunto, sem omitir nem trocar seus valores. Informe de regra vigente não é aprovação coletiva. Preserve a autoria informada no speaker do mesmo trecho e as perguntas/respostas concretas, sem inferir autor pelo cargo nem transformar texto corrompido em sujeito fictício.',
           },
         },
         required: ['pauta', 'relato'],
@@ -56,12 +56,12 @@ export const ataResponseSchema: object = {
     },
     encaminhamentos: {
       type: 'ARRAY',
-      description: 'Ações combinadas para depois da reunião.',
+      description: 'Ações efetivamente assumidas ou deliberadas para depois da reunião. Uma pergunta explicitamente fora da pauta, seguida só de será verificada, permanece no relato com pauta 0 e não cria encaminhamento.',
       items: {
         type: 'OBJECT',
         properties: {
-          acao: { type: 'STRING', description: 'O que ficou explicitamente combinado fazer, preservando os horários, datas, durações e limites ditos que definem a ação.' },
-          responsavel: { type: 'STRING', description: 'Quem fará, só se dito. Omitir se não dito.' },
+          acao: { type: 'STRING', description: 'O que ficou explicitamente combinado fazer; pergunta ou futuro impessoal não comprovam compromisso. Preserve os horários, datas, durações e limites ditos que definem a ação.' },
+          responsavel: { type: 'STRING', description: 'Quem assumiu a ação, só se dito ou identificado no speaker do próprio trecho. Eu refere-se a esse speaker; nunca à coordenação por inferência de cargo. Omitir se não identificado.' },
           prazo: { type: 'STRING', description: 'Prazo, só se dito, por extenso. Omitir se não dito.' },
         },
         required: ['acao'],
@@ -71,7 +71,7 @@ export const ataResponseSchema: object = {
     manifestacoes: {
       type: 'ARRAY',
       description:
-        'OPCIONAL. Reunião de pais: dúvidas e demandas das famílias, sem identificar casos individuais. Orientação: manifestações do orientado e de quem o acompanha. Cada item, uma frase no pretérito perfeito. Omitir ou [] nas reuniões pedagógicas.',
+        'OPCIONAL. Reunião de pais: preserve a pergunta concreta, a autoria informada de perguntas gerais e a resposta explícita da escola no relato. Não identificar responsáveis nem registrar detalhes em casos individuais de alunos. Orientação: manifestações do orientado e de quem o acompanha. Cada item, uma frase no pretérito perfeito. Omitir ou [] nas reuniões pedagógicas.',
       items: { type: 'STRING' },
     },
     orientacoes: {
