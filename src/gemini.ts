@@ -74,22 +74,22 @@ async function comRetry<T>(fn: () => Promise<T>, tentativas = 3, onTentativa?: (
   throw ultimo!
 }
 
-/** Só a sobrecarga esgotada permite trocar o modelo; upload não usa fallback. */
+/** Cota ou sobrecarga esgotada permitem trocar o modelo; upload não usa fallback. */
 async function comFallback<T>(
   modelo: string,
   fn: (modelo: string) => Promise<T>,
   onTentativa: (modelo: string, tentativa: number, fallback: boolean) => void,
 ): Promise<T> {
-  const modelos = [...new Set([modelo, 'gemini-3.6-flash', 'gemini-flash-latest'])]
+  const modelos = [...new Set([modelo, 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest'])]
   for (let i = 0; i < modelos.length; i++) {
     const atual = modelos[i]
     try {
       return await comRetry(() => fn(atual), 3, tentativa => onTentativa(atual, tentativa, i > 0))
     } catch (e) {
       const erro = traduzirErro(e)
-      if (erro.kind !== 'sobrecarga') throw erro
+      if (erro.kind !== 'sobrecarga' && erro.kind !== 'cota') throw erro
       if (i === modelos.length - 1) {
-        throw new GeminiError('sobrecarga', `${erro.message} Modelos tentados: ${modelos.join(', ')}.`)
+        throw new GeminiError(erro.kind, `${erro.message} Modelos tentados: ${modelos.join(', ')}.`)
       }
     }
   }

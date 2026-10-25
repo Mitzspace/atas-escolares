@@ -62,7 +62,8 @@ const meta: MeetingMetadata = {
   presidente: { nome: 'Ana', cargo: 'Diretora' }, secretario: { nome: 'Bia', cargo: 'Professora' },
   participantes: [], pauta: ['Planejamento'], anonimizarAlunos: true,
 }
-const modelos = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest']
+const modelos = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest']
+const cota = () => Object.assign(new Error('RESOURCE_EXHAUSTED'), { status: 429 })
 const sobrecarga = () => Object.assign(new Error('UNAVAILABLE: overloaded'), { status: 503 })
 
 // Exercita os dois consumidores com SDK simulado, sem chamadas externas nem espera real.
@@ -92,7 +93,7 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
     return { generateContent, upload, apagar, progresso, executar }
   }
 
-  it.each([0, 1, 2])('sucesso no modelo de índice %i, após esgotar os anteriores', async indice => {
+  it.each([0, 1, 2, 3])('sucesso no modelo de índice %i, após esgotar os anteriores', async indice => {
     const caso = preparar(modelo => {
       if (modelo !== modelos[indice]) throw sobrecarga()
       return { text: '[]' }
@@ -128,7 +129,6 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
   })
 
   it.each([
-    ['cota', Object.assign(new Error('RESOURCE_EXHAUSTED'), { status: 429 }), 1],
     ['rede', new TypeError('Failed to fetch'), 3],
     ['chave', Object.assign(new Error('API key inválida'), { status: 403 }), 1],
     ['conteudo', new GeminiError('conteudo', 'Conteúdo bloqueado'), 1],
@@ -140,16 +140,44 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
     expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual(Array(chamadas).fill(modelos[0]))
   })
 
-  it('interrompe se o alternativo retorna cota', async () => {
+  it.each([1, 2, 3])('cota avança até o modelo funcional de índice %i', async indice => {
+    const caso = preparar(modelo => {
+      if (modelo !== modelos[indice]) throw cota()
+      return { text: '[]' }
+    })
+    const verificar = expect(caso.executar()).resolves.toEqual([])
+    await vi.runAllTimersAsync()
+    await verificar
+    expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual(modelos.slice(0, indice + 1))
+    const mensagens = caso.progresso.mock.calls.map(([mensagem]) => mensagem as string)
+    for (const modelo of modelos.slice(0, indice + 1)) {
+      expect(mensagens.some(m => m.includes(modelo) && m.includes('tentativa 1/3'))).toBe(true)
+      expect(mensagens.some(m => m.includes(modelo) && m.includes('tentativa 2/3'))).toBe(false)
+    }
+    expect(mensagens.some(m => m.includes(modelos[indice]) && m.includes('modelo alternativo'))).toBe(true)
+  })
+
+  it('só exibe erro de cota depois que toda a cadeia retorna cota', async () => {
+    const caso = preparar(() => { throw cota() })
+    const verificar = expect(caso.executar()).rejects.toMatchObject({
+      kind: 'cota', message: expect.stringContaining(modelos.join(', ')),
+    })
+    await vi.runAllTimersAsync()
+    await verificar
+    expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual(modelos)
+  })
+
+  it('combina retries de sobrecarga com avanço imediato por cota no alternativo', async () => {
     const caso = preparar(modelo => {
       if (modelo === modelos[0]) throw sobrecarga()
-      throw Object.assign(new Error('quota'), { status: 429 })
+      if (modelo === modelos[1]) throw cota()
+      return { text: '[]' }
     })
-    const verificar = expect(caso.executar()).rejects.toMatchObject({ kind: 'cota' })
+    const verificar = expect(caso.executar()).resolves.toEqual([])
     await vi.runAllTimersAsync()
     await verificar
     expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual([
-      modelos[0], modelos[0], modelos[0], modelos[1],
+      modelos[0], modelos[0], modelos[0], modelos[1], modelos[2],
     ])
   })
 
@@ -167,7 +195,7 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
     await vi.runAllTimersAsync()
     await verificar
     expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual([
-      modelos[1], modelos[1], modelos[1], modelos[2], modelos[2], modelos[2],
+      ...modelos.slice(1).flatMap(m => [m, m, m]),
     ])
   })
 })
