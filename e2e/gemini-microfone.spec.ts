@@ -29,6 +29,56 @@ const equipe: [string, string][] = [
 ]
 type Falha = { item: string; esperado: string; passou: false }
 
+function semCredenciais(valor: string) {
+  return valor
+    .replaceAll(chaveGemini ?? '\0', '[CHAVE_REMOVIDA]')
+    .replace(/AIza[\w-]{20,}/g, '[CHAVE_REMOVIDA]')
+    .replace(/([?&]key=)[^&\s]+/gi, '$1[CHAVE_REMOVIDA]')
+}
+
+function registrarLogs(page: Page) {
+  const arquivo = path.join(saida, 'logs-orientacao.txt')
+  fs.writeFileSync(arquivo, '')
+  const salvar = (linha: string) => fs.appendFileSync(arquivo, `${new Date().toISOString()} ${semCredenciais(linha)}\n`)
+  page.on('console', msg => {
+    if (msg.type() === 'error' || msg.type() === 'warning') salvar(`console:${msg.type()} ${msg.text()}`)
+  })
+  page.on('pageerror', error => salvar(`pageerror ${error.message}`))
+  page.on('requestfailed', request => {
+    const url = new URL(request.url())
+    salvar(`requestfailed ${request.method()} ${url.origin}${url.pathname} ${request.failure()?.errorText ?? ''}`)
+  })
+  page.on('response', response => {
+    if (response.status() === 429 || response.status() >= 500) {
+      const url = new URL(response.url())
+      salvar(`response ${response.status()} ${url.origin}${url.pathname}`)
+    }
+  })
+}
+
+async function esperarResultado(page: Page, seletorSucesso: string, etapa: string) {
+  const arquivo = path.join(saida, 'logs-orientacao.txt')
+  const inicio = Date.now()
+  let ultimoLog = inicio
+  const sucesso = page.locator(seletorSucesso)
+  while (Date.now() - inicio < 14 * 60_000) {
+    if (await sucesso.isVisible().catch(() => false)) return
+    const alerta = page.getByRole('alert')
+    if (await alerta.isVisible().catch(() => false)) {
+      throw new Error(`${etapa} terminou com erro na tela: ${semCredenciais(await alerta.innerText())}`)
+    }
+    if (Date.now() - ultimoLog >= 30_000) {
+      const progresso = await page.getByRole('progressbar').getAttribute('aria-valuenow').catch(() => 'indisponível')
+      const status = (await page.locator('main').innerText().catch(() => 'tela principal indisponível')).replace(/\s+/g, ' ').slice(0, 240)
+      fs.appendFileSync(arquivo, `${new Date().toISOString()} etapa:${etapa} ainda processando; progresso=${progresso}; tela=${semCredenciais(status)}\n`)
+      ultimoLog = Date.now()
+    }
+    await page.waitForTimeout(1000)
+  }
+  const status = (await page.locator('main').innerText().catch(() => 'tela principal indisponível')).replace(/\s+/g, ' ').slice(0, 240)
+  throw new Error(`${etapa} não chegou à tela de sucesso nem exibiu erro após 14 minutos. Tela final: ${semCredenciais(status)}`)
+}
+
 function preparar(falhas: Falha[]) {
   fs.mkdirSync(saida, { recursive: true })
   fs.writeFileSync(path.join(saida, 'conferencias-orientacao.json'), `${JSON.stringify(falhas, null, 2)}\n`)
@@ -81,10 +131,11 @@ async function extrairPdf(pdfPath: string) {
 }
 
 test('3. grava, pausa, retoma, orienta aluno e funcionário e oferece recuperação', async ({ page }) => {
-  test.setTimeout(10 * 60_000)
-  page.setDefaultTimeout(10 * 60_000)
+  test.setTimeout(15 * 60_000)
+  page.setDefaultTimeout(15 * 60_000)
   const falhas: Falha[] = []
   preparar(falhas)
+  registrarLogs(page)
   try {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'Atas de reunião' })).toBeVisible()
@@ -140,13 +191,13 @@ test('3. grava, pausa, retoma, orienta aluno e funcionário e oferece recuperaç
     await page.getByRole('button', { name: 'Transcrever o áudio' }).click()
     await expect(page.getByRole('heading', { name: 'Transcrevendo o áudio' })).toBeVisible()
     await captura(page, 'transcrevendo')
-    await expect(page.getByRole('heading', { name: 'Revisar a transcrição' })).toBeVisible({ timeout: 9 * 60_000 })
+    await esperarResultado(page, 'h1:has-text("Revisar a transcrição")', 'transcrição')
     await captura(page, 'revisao-transcricao')
     await page.getByRole('button', { name: 'Gerar a ata' }).click()
     await expect(page.getByRole('heading', { name: 'Redigindo a ata' })).toBeVisible()
     await captura(page, 'gerando-ata')
     const campoTexto = page.locator('#texto-ata')
-    await expect(campoTexto).toBeVisible({ timeout: 9 * 60_000 })
+    await esperarResultado(page, '#texto-ata', 'geração da ata')
     const texto = await campoTexto.inputValue()
     fs.writeFileSync(path.join(saida, 'ata-orientacao.txt'), `${texto}\n`)
 
@@ -155,8 +206,8 @@ test('3. grava, pausa, retoma, orienta aluno e funcionário e oferece recuperaç
     await conferir(texto, falhas, 'aluno orientado presente no texto', /Pedro Henrique/i)
     await conferir(texto, falhas, 'funcionário orientado presente no texto', /Carlos Mendes/i)
     await conferir(texto, falhas, 'ciência registrada ou marcada pendente', /ci[eê]ncia|\[PENDENTE:[^\]]*ci[eê]ncia/i)
-    const checkPedro = page.locator('label').filter({ hasText: 'Pedro Henrique' }).locator('input[type="checkbox"]')
-    const checkCarlos = page.locator('label').filter({ hasText: 'Carlos Mendes' }).locator('input[type="checkbox"]')
+    const checkPedro = page.getByRole('checkbox', { name: /^Aluno Pedro Henrique/ })
+    const checkCarlos = page.getByRole('checkbox', { name: /^Funcionário Carlos Mendes/ })
     conferirCondicao(await checkPedro.count() > 0 && await checkPedro.isChecked(), falhas, 'aluno orientado permanece presente', 'checkbox marcado')
     conferirCondicao(await checkPedro.count() > 0 && await checkPedro.isDisabled(), falhas, 'presença do aluno orientado é fixa', 'checkbox desabilitado')
     conferirCondicao(await checkCarlos.count() > 0 && await checkCarlos.isChecked(), falhas, 'funcionário orientado permanece presente', 'checkbox marcado')

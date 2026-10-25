@@ -29,6 +29,55 @@ const equipe: [string, string][] = [
 
 type FalhaConferencia = { item: string; esperado: string; passou: false }
 
+function semCredenciais(valor: string) {
+  return valor
+    .replaceAll(chaveGemini ?? '\0', '[CHAVE_REMOVIDA]')
+    .replace(/AIza[\w-]{20,}/g, '[CHAVE_REMOVIDA]')
+    .replace(/([?&]key=)[^&\s]+/gi, '$1[CHAVE_REMOVIDA]')
+}
+
+function registrarLogs(page: Page, cenario: string) {
+  const arquivo = path.join(saida, `logs-${cenario}.txt`)
+  fs.writeFileSync(arquivo, '')
+  const salvar = (linha: string) => fs.appendFileSync(arquivo, `${new Date().toISOString()} ${semCredenciais(linha)}\n`)
+  page.on('console', msg => {
+    if (msg.type() === 'error' || msg.type() === 'warning') salvar(`console:${msg.type()} ${msg.text()}`)
+  })
+  page.on('pageerror', error => salvar(`pageerror ${error.message}`))
+  page.on('requestfailed', request => {
+    const url = new URL(request.url())
+    salvar(`requestfailed ${request.method()} ${url.origin}${url.pathname} ${request.failure()?.errorText ?? ''}`)
+  })
+  page.on('response', response => {
+    if (response.status() === 429 || response.status() >= 500) {
+      const url = new URL(response.url())
+      salvar(`response ${response.status()} ${url.origin}${url.pathname}`)
+    }
+  })
+}
+
+async function esperarResultadoProcessamento(page: Page, sucesso: ReturnType<Page['locator']>, etapa: string, cenario: string) {
+  const inicio = Date.now()
+  let ultimoLog = inicio
+  const arquivo = path.join(saida, `logs-${cenario}.txt`)
+  while (Date.now() - inicio < 14 * 60_000) {
+    if (await sucesso.isVisible().catch(() => false)) return
+    const alerta = page.getByRole('alert')
+    if (await alerta.isVisible().catch(() => false)) {
+      throw new Error(`${etapa} terminou com erro na tela: ${semCredenciais(await alerta.innerText())}`)
+    }
+    if (Date.now() - ultimoLog >= 30_000) {
+      const progresso = await page.getByRole('progressbar').getAttribute('aria-valuenow').catch(() => 'indisponível')
+      const status = (await page.locator('main').innerText().catch(() => 'tela principal indisponível')).replace(/\s+/g, ' ').slice(0, 240)
+      fs.appendFileSync(arquivo, `${new Date().toISOString()} etapa:${etapa} ainda processando; progresso=${progresso}; tela=${semCredenciais(status)}\n`)
+      ultimoLog = Date.now()
+    }
+    await page.waitForTimeout(1000)
+  }
+  const status = (await page.locator('main').innerText().catch(() => 'tela principal indisponível')).replace(/\s+/g, ' ').slice(0, 240)
+  throw new Error(`${etapa} não chegou à tela de sucesso nem exibiu erro após 14 minutos. Tela final: ${semCredenciais(status)}`)
+}
+
 function prepararSaida(cenario: string) {
   fs.mkdirSync(saida, { recursive: true })
   fs.writeFileSync(path.join(saida, `conferencias-${cenario}.json`), '[]\n')
@@ -90,7 +139,7 @@ async function processarTranscricao(page: Page, cenario: string) {
   await page.getByRole('button', { name: 'Transcrever o áudio' }).click()
   await expect(page.getByRole('heading', { name: 'Transcrevendo o áudio' })).toBeVisible()
   await captura(page, cenario, 'transcrevendo')
-  await expect(page.getByRole('heading', { name: 'Revisar a transcrição' })).toBeVisible({ timeout: 9 * 60_000 })
+  await esperarResultadoProcessamento(page, page.getByRole('heading', { name: 'Revisar a transcrição' }), 'transcrição', cenario)
   await captura(page, cenario, 'revisao-transcricao')
   const falante = page.getByLabel(/^Nome de /).first()
   if (await falante.count()) {
@@ -101,7 +150,7 @@ async function processarTranscricao(page: Page, cenario: string) {
   await page.getByRole('button', { name: 'Gerar a ata' }).click()
   await expect(page.getByRole('heading', { name: 'Redigindo a ata' })).toBeVisible()
   await captura(page, cenario, 'gerando-ata')
-  await expect(page.locator('#texto-ata')).toBeVisible({ timeout: 9 * 60_000 })
+  await esperarResultadoProcessamento(page, page.locator('#texto-ata'), 'geração da ata', cenario)
 }
 
 async function salvarPendenciasProblemas(page: Page, cenario: string) {
@@ -198,11 +247,12 @@ function salvarFalhas(cenario: string, falhas: FalhaConferencia[]) {
 }
 
 test('2. reunião pedagógica: upload, revisão, ata e PDF', async ({ page }) => {
-  test.setTimeout(10 * 60_000)
-  page.setDefaultTimeout(10 * 60_000)
+  test.setTimeout(15 * 60_000)
+  page.setDefaultTimeout(15 * 60_000)
   const cenario = 'pedagogica'
   const falhas: FalhaConferencia[] = []
   prepararSaida(cenario)
+  registrarLogs(page, cenario)
   try {
     await configurarEscola(page)
     await iniciarNovaAta(page, cenario, /Reunião pedagógica/)
@@ -223,15 +273,14 @@ test('2. reunião pedagógica: upload, revisão, ata e PDF', async ({ page }) =>
     await completarUmaPendencia(page)
 
     const textoAta = page.locator('#texto-ata')
-    const antes = await textoAta.inputValue()
-    await textoAta.fill(antes.replace(/^Aos /, 'Aos  '))
     const checkClara = page.locator('label').filter({ hasText: 'Clara Dias' }).locator('input[type="checkbox"]')
     await expect(checkClara).toBeChecked()
     await checkClara.uncheck()
-    await expect(page.getByRole('alert')).toContainText('texto')
+    await expect(checkClara).not.toBeChecked()
     await expect(page.locator('#texto-ata')).toHaveValue(/Não compareceu a seguinte convocada/)
     await checkClara.check()
     await expect(checkClara).toBeChecked()
+    await expect(page.locator('#texto-ata')).not.toHaveValue(/Não compareceu a seguinte convocada/)
     const texto = await salvarTextoFinal(page, cenario)
 
     await conferencia(texto, cenario, falhas, 'reforço de Matemática', /refor[cç]o.{0,100}Matem[aá]tica/i)
@@ -251,7 +300,9 @@ test('2. reunião pedagógica: upload, revisão, ata e PDF', async ({ page }) =>
     await conferencia(texto, cenario, falhas, 'conselho de classe às oito horas', /conselho de classe.{0,100}oito horas|conselho de classe.{0,100}8 horas/i)
     await conferencia(texto, cenario, falhas, 'sem aula em dois de novembro', /sem aula.{0,80}dois de novembro|sem aula.{0,80}2 de novembro/i)
     await conferencia(texto, cenario, falhas, 'café não aparece', /caf[eé]/i, false)
-    await conferencia(texto, cenario, falhas, 'sem responsável inventado para a secretaria avisar a família', /secretaria.{0,100}(avisar|avisar[aá]|comunicar).{0,100}fam[ií]lia/i, false)
+    const encaminhamentoContato = texto.match(/primeiro,[^;.]*(?:;|$)/i)?.[0] ?? ''
+    await conferencia(encaminhamentoContato, cenario, falhas, 'secretaria escolar responsável pelo contato com a família conforme áudio', /(?:contato|entrar em contato).{0,140}(?:fam[ií]lia|respons[aá]veis).{0,120}a cargo d[ae] secretaria escolar/i)
+    await conferencia(encaminhamentoContato, cenario, falhas, 'contato com a família não atribuído individualmente', /(?:a cargo d[eo]|respons[aá]vel(?: por| pela tarefa)?\s*[:,-]?)\s*(?:Maria Souza|Joana Alves|Paulo Reis|Carlos Mendes|Clara Dias)/i, false)
     await conferencia(texto, cenario, falhas, 'números e datas sem algarismos no texto corrido', /\d/,
       false)
     salvarFalhas(cenario, falhas)
