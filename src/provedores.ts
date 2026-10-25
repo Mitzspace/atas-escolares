@@ -40,9 +40,8 @@ export const provedores: Record<ProvedorId, Provedor> = {
   },
 }
 
-async function comReserva<T>(opts: OpcoesComuns, executar: (provedor: Provedor) => Promise<ResultadoProvedor<T>>) {
+async function comReserva<T>(opts: OpcoesComuns, executar: (provedor: Provedor) => Promise<ResultadoProvedor<T>>, preferido: ProvedorId) {
   const { settings, onProgress } = opts
-  const preferido = settings.provedorPreferido === 'gemini' ? 'gemini' : 'groq'
   const ordem: ProvedorId[] = preferido === 'groq' ? ['groq', 'gemini'] : ['gemini', 'groq']
   const disponiveis = ordem.filter(id => (id === 'groq' ? settings.groqApiKey : settings.apiKey)?.trim())
   if (!disponiveis.length) throw new ErroProvedor('chave', 'Cole uma chave do Groq ou do Gemini em Configurações antes de começar.')
@@ -63,7 +62,7 @@ async function comReserva<T>(opts: OpcoesComuns, executar: (provedor: Provedor) 
 }
 export const transcreverComProvedores = (opts: OpcoesTranscricao) => {
   const configuracao = opts.file.size > LIMITE_AUDIO_GROQ_BYTES && opts.settings.apiKey.trim()
-    ? { ...opts, settings: { ...opts.settings, provedorPreferido: 'gemini' as const } } : opts
-  return comReserva(configuracao, provedor => provedor.transcrever(configuracao))
+    ? { ...opts, settings: { ...opts.settings, provedorTranscricaoPreferido: 'gemini' as const } } : opts
+  return comReserva(configuracao, provedor => provedor.transcrever(configuracao), configuracao.settings.provedorTranscricaoPreferido ?? 'groq')
 }
-export const redigirComProvedores = (opts: OpcoesRedacao) => comReserva(opts, provedor => provedor.redigir(opts))
+export const redigirComProvedores = (opts: OpcoesRedacao) => comReserva(opts, provedor => provedor.redigir(opts), opts.settings.provedorRedacaoPreferido ?? 'gemini')

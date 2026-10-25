@@ -54,12 +54,12 @@ it.each(['groq', 'gemini'] as const)('configura apenas %s, testa a chave correta
 it('salva preferência e modelos Groq selecionados', async () => {
   vi.mocked(getSettings).mockResolvedValue(SETTINGS_PADRAO)
   await act(async () => root.render(<MemoryRouter><Configuracoes /></MemoryRouter>))
-  for (const [id, valor] of [['provedor', 'gemini'], ['modelo-groq', 'qwen/qwen3.8-27b'], ['whisper-groq', 'whisper-large-v3-turbo']]) {
+  for (const [id, valor] of [['provedor-transcricao', 'gemini'], ['provedor-redacao', 'groq'], ['modelo-groq', 'qwen/qwen3.8-27b'], ['whisper-groq', 'whisper-large-v3-turbo']]) {
     const campo = container.querySelector<HTMLSelectElement>(`#${id}`)!
     await act(async () => { campo.value = valor; campo.dispatchEvent(new Event('change', { bubbles: true })) })
   }
   await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent === 'Salvar')!.click())
   expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
-    provedorPreferido: 'gemini', modeloGroq: 'qwen/qwen3.8-27b', modeloTranscricaoGroq: 'whisper-large-v3-turbo',
+    provedorTranscricaoPreferido: 'gemini', provedorRedacaoPreferido: 'groq', modeloGroq: 'qwen/qwen3.8-27b', modeloTranscricaoGroq: 'whisper-large-v3-turbo',
   }))
 })

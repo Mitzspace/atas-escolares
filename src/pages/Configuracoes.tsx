@@ -36,11 +36,15 @@ export default function Configuracoes() {
 
       <section className="card space-y-3">
         <h2 className="font-semibold">Fornecedores de inteligência artificial</h2>
-        <label className="label" htmlFor="provedor">Provedor preferido</label>
-        <select id="provedor" className="field" value={s.provedorPreferido} onChange={e => up({ provedorPreferido: e.target.value as ProvedorId })}>
-          <option value="groq">Groq (padrão)</option><option value="gemini">Gemini</option>
+        <label className="label" htmlFor="provedor-transcricao">Provedor preferido para transcrever</label>
+        <select id="provedor-transcricao" className="field" value={s.provedorTranscricaoPreferido} onChange={e => up({ provedorTranscricaoPreferido: e.target.value as ProvedorId })}>
+          <option value="groq">Groq Whisper (padrão)</option><option value="gemini">Gemini</option>
         </select>
-        <p className="text-sm text-slate-600">Basta uma das chaves. Se você cadastrar as duas, usaremos a outra automaticamente em caso de falta de cota, sobrecarga ou falha de conexão. As chaves ficam só neste aparelho.</p>
+        <label className="label" htmlFor="provedor-redacao">Provedor preferido para redigir</label>
+        <select id="provedor-redacao" className="field" value={s.provedorRedacaoPreferido} onChange={e => up({ provedorRedacaoPreferido: e.target.value as ProvedorId })}>
+          <option value="gemini">Gemini (padrão)</option><option value="groq">Groq</option>
+        </select>
+        <p className="text-sm text-slate-600">Basta uma das chaves. Por padrão transcrevemos com Groq e redigimos com Gemini. Se você cadastrar as duas chaves, usaremos a outra automaticamente em caso de falta de cota, sobrecarga ou falha de conexão. As chaves ficam só neste aparelho.</p>
       </section>
 
       <section className="card space-y-3">
@@ -59,7 +63,7 @@ export default function Configuracoes() {
         <select id="whisper-groq" className="field" value={s.modeloTranscricaoGroq} onChange={e => up({ modeloTranscricaoGroq: e.target.value })}>
           {MODELOS_TRANSCRICAO_GROQ.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
         </select>
-        <p className="text-sm text-slate-600">O Whisper transcreve em português com tempos, sem separar falantes. Você poderá atribuir quem falou a cada trecho na revisão. O plano gratuito aceita arquivos de até 25 MB; para reuniões maiores, grave e envie em partes.</p>
+        <p className="text-sm text-slate-600">O Whisper transcreve em português com tempos, sem separar falantes. Você poderá atribuir quem falou a cada trecho na revisão. Acima de 25 MB, usamos o Gemini quando houver chave; sem ela, dividimos em partes de dez minutos se a memória do aparelho permitir.</p>
         <button className="btn-secondary w-full" onClick={() => testar('groq')} disabled={!s.groqApiKey.trim() || !!testando}>{testando === 'groq' ? 'Testando Groq…' : 'Testar chave do Groq'}</button>
       </section>
 

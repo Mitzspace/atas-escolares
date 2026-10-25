@@ -11,7 +11,7 @@ const meta: MeetingMetadata = {
   presidente: { nome: 'Maria', cargo: 'Diretora' }, secretario: { nome: 'Joana', cargo: 'Coordenadora' },
   participantes: [], pauta: ['Calendário'], anonimizarAlunos: true,
 }
-const settings: Settings = { ...SETTINGS_PADRAO, apiKey: 'gemini-chave-ficticia', groqApiKey: 'groq-chave-ficticia' }
+const settings: Settings = { ...SETTINGS_PADRAO, provedorRedacaoPreferido: 'groq', apiKey: 'gemini-chave-ficticia', groqApiKey: 'groq-chave-ficticia' }
 const extraida = { itens: [], deliberacoes: [], encaminhamentos: [], pendencias: [] }
 const transcript = [{ speaker: 'Falante', start: '00:00', end: '00:01', text: 'Boa tarde.' }]
 const file = new File(['audio fictício'], 'teste.wav')
@@ -64,7 +64,7 @@ describe.each(['transcrever', 'redigir'] as const)('provedores para %s', operaca
   it('respeita a preferência Gemini e reserva Groq', async () => {
     gemini().mockRejectedValue(new GeminiError('cota', 'Cota Gemini esgotada.'))
     fetchMock.mockResolvedValue(respostaGroq())
-    expect(await executar({ ...settings, provedorPreferido: 'gemini' })).toMatchObject({ provedor: 'groq' })
+    expect(await executar({ ...settings, provedorRedacaoPreferido: 'gemini', provedorTranscricaoPreferido: 'gemini' })).toMatchObject({ provedor: 'groq' })
     expect(gemini()).toHaveBeenCalledTimes(1)
   })
   it('não usa a reserva com chave inválida ou erro de conteúdo', async () => {
@@ -126,4 +126,12 @@ it('cota diária local perto do fim passa a redação ao Gemini sem chamada Groq
   await executarNaJanela(settings.groqApiKey, settings.modeloGroq, 179000, async () => ({}), vi.fn())
   expect(await redigirComProvedores({ settings, meta, transcript })).toMatchObject({ provedor: 'gemini' })
   expect(fetchMock).not.toHaveBeenCalled()
+})
+
+
+it('padrão transcreve com Whisper e redige com Gemini, com escolhas independentes', async () => {
+  const padrao = { ...SETTINGS_PADRAO, apiKey: 'gemini-ficticia', groqApiKey: 'groq-ficticia' }
+  expect(await redigirComProvedores({ settings: padrao, meta, transcript })).toMatchObject({ provedor: 'gemini' })
+  fetchMock.mockResolvedValue(new Response(JSON.stringify({ segments: [{ start: 0, end: 1, text: 'Olá.' }] }), { status: 200 }))
+  expect(await transcreverComProvedores({ settings: padrao, meta, file })).toMatchObject({ provedor: 'groq' })
 })
