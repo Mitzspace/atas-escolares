@@ -16,11 +16,14 @@ test.use({
 
 const saida = path.resolve('e2e/saida')
 const audioPedagogico = '/home/william/audio-teste-ata/reuniao-pedagogica-teste.mp3'
-const audioCurto = '/home/william/audio-teste-ata/trecho-40s.wav'
 const escola = 'Escola Municipal Professora Ana Lima'
 const equipe: [string, string][] = [
   ['Joana Alves', 'Coordenadora Pedagógica'],
   ['Carlos Mendes', 'Professor de Matemática'],
+  ['Clara Dias', 'Professora de Ciências'],
+]
+const equipePais: [string, string][] = [
+  ['Joana Alves', 'Coordenadora Pedagógica'],
   ['Clara Dias', 'Professora de Ciências'],
 ]
 
@@ -91,24 +94,30 @@ async function captura(page: Page, cenario: string, etapa: string) {
   await page.screenshot({ path: path.join(saida, `tela-${cenario}-${etapa}.png`) })
 }
 
-async function configurarEscola(page: Page) {
+async function configurarEscola(
+  page: Page,
+  pessoas: [string, string][] = equipe,
+  assuntoPersonalizado = 'Entrega de avaliações às famílias',
+  modelo?: string,
+) {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Atas de reunião' })).toBeVisible()
   await page.getByLabel('Navegação principal').getByRole('link', { name: 'Configurações' }).click()
   // A chave fica apenas no campo password e no IndexedDB isolado deste contexto.
   // Esta tela nunca é capturada e trace, vídeo e screenshots automáticos estão desligados.
   await page.getByLabel('Chave da API').fill(chaveGemini!)
+  if (modelo) await page.getByLabel('Modelo para redigir a ata').selectOption(modelo)
   await page.getByLabel('Nome da escola').fill(escola)
   await page.getByLabel('Rede').fill('Secretaria Municipal de Educação')
   await page.getByLabel('Município/UF').fill('Campinas/SP')
-  for (const [i, [nome, cargo]] of equipe.entries()) {
+  for (const [i, [nome, cargo]] of pessoas.entries()) {
     await page.getByRole('button', { name: /Adicionar pessoa/ }).click()
     await page.getByLabel(`Nome da pessoa ${i + 1}`).fill(nome)
     await page.getByLabel(`Cargo da pessoa ${i + 1}`).fill(cargo)
   }
   const grupoPais = page.locator('details').filter({ hasText: 'Pais e responsáveis' })
   await grupoPais.locator('summary').click()
-  await grupoPais.getByLabel('Novo assunto de Pais e responsáveis').fill('Entrega de avaliações às famílias')
+  await grupoPais.getByLabel('Novo assunto de Pais e responsáveis').fill(assuntoPersonalizado)
   await grupoPais.getByRole('button', { name: 'Adicionar' }).click()
   await page.getByRole('button', { name: 'Salvar' }).click()
   await expect(page.getByRole('status')).toContainText('Configurações salvas')
@@ -141,6 +150,10 @@ async function processarTranscricao(page: Page, cenario: string) {
   await captura(page, cenario, 'transcrevendo')
   await esperarResultadoProcessamento(page, page.getByRole('heading', { name: 'Revisar a transcrição' }), 'transcrição', cenario)
   await captura(page, cenario, 'revisao-transcricao')
+  const falasTranscritas = await page.locator('textarea').evaluateAll(elementos =>
+    elementos.map(elemento => (elemento as HTMLTextAreaElement).value),
+  )
+  fs.writeFileSync(path.join(saida, `transcricao-${cenario}.txt`), `${falasTranscritas.join('\n')}\n`)
   const falante = page.getByLabel(/^Nome de /).first()
   if (await falante.count()) {
     await falante.fill('Maria Souza')
@@ -315,7 +328,7 @@ test('2. reunião pedagógica: upload, revisão, ata e PDF', async ({ page }) =>
   }
 })
 
-test('4. pais e responsáveis: dois funcionários, duas famílias, chips e PDF', async ({ page }) => {
+test('4. pais e responsáveis: equipe, três famílias, assuntos e PDF', async ({ page }) => {
   test.setTimeout(15 * 60_000)
   page.setDefaultTimeout(15 * 60_000)
   const cenario = 'pais'
@@ -323,17 +336,18 @@ test('4. pais e responsáveis: dois funcionários, duas famílias, chips e PDF',
   prepararSaida(cenario)
   registrarLogs(page, cenario)
   try {
-    await configurarEscola(page)
+    await configurarEscola(page, equipePais, 'Feira de Ciências e voluntariado', 'gemini-3.5-flash-lite')
     await iniciarNovaAta(page, cenario, /Pais e responsáveis/)
-    await preencherDadosComuns(page)
+    await preencherDadosComuns(page, '19:00', '19:50')
     await page.locator('#Presidiu-nome').fill('Maria Souza')
     await page.locator('#Presidiu-cargo').fill('Diretora')
-    await page.locator('#Lavrou-nome').fill('Paulo Reis')
-    await page.locator('#Lavrou-cargo').fill('Secretário')
-    const nomeClara = page.getByRole('textbox', { name: 'Nome', exact: true }).nth(2)
+    await page.locator('#Lavrou-nome').fill('Joana Alves')
+    await page.locator('#Lavrou-cargo').fill('Coordenadora Pedagógica')
+    const nomeClara = page.getByRole('textbox', { name: 'Nome', exact: true }).nth(1)
     await expect(nomeClara).toHaveValue('Clara Dias')
-    const clara = page.getByRole('checkbox', { name: 'Presente', exact: true }).nth(2)
-    await clara.uncheck()
+    const clara = page.getByRole('checkbox', { name: 'Presente', exact: true }).nth(1)
+    await expect(clara).toBeChecked()
+    await page.getByRole('button', { name: /Adicionar respons[aá]vel/ }).click()
     await page.getByRole('button', { name: /Adicionar respons[aá]vel/ }).click()
     await page.getByRole('button', { name: /Adicionar respons[aá]vel/ }).click()
     const responsaveis = page.locator('.person-card')
@@ -348,43 +362,68 @@ test('4. pais e responsáveis: dois funcionários, duas famílias, chips e PDF',
     await rui.getByLabel('Parentesco').selectOption({ label: 'Pai' })
     await rui.getByLabel('Nome do aluno').fill('Laura Dias')
     await rui.getByLabel('Tratamento do aluno').selectOption({ label: 'Aluna' })
-    await rui.getByLabel('Turma').fill('3º ano A')
+    await rui.getByLabel('Turma').fill('5º ano B')
+    const beatriz = responsaveis.nth(2)
+    await beatriz.getByLabel('Nome do responsável').fill('Beatriz Lima')
+    await beatriz.getByLabel('Parentesco').selectOption({ label: 'Mãe' })
+    await beatriz.getByLabel('Nome do aluno').fill('Lucas Lima')
+    await beatriz.getByLabel('Tratamento do aluno').selectOption({ label: 'Aluno' })
+    await beatriz.getByLabel('Turma').fill('5º ano B')
     const assunto1 = page.getByRole('button', { name: 'Calendário escolar e datas importantes' })
-    const assunto2 = page.getByRole('button', { name: 'Dúvidas e sugestões das famílias' })
-    const assuntoProprio = page.getByRole('button', { name: 'Entrega de avaliações às famílias' })
+    const assunto2 = page.getByRole('button', { name: 'Frequência, faltas e atrasos' })
+    const assuntoProprio = page.getByRole('button', { name: 'Feira de Ciências e voluntariado' })
     await assunto1.click()
     await assunto2.click()
     await assuntoProprio.click()
-    await selecionarAudio(page, audioCurto)
+    await selecionarAudio(page, '/home/william/audio-teste-ata/reuniao-pais-teste.mp3')
     await captura(page, cenario, 'dados')
     await processarTranscricao(page, cenario)
     await salvarPendenciasProblemas(page, cenario)
-    await completarUmaPendencia(page)
     const texto = await salvarTextoFinal(page, cenario)
     const titulo = await page.getByRole('heading', { level: 1 }).first().innerText()
     await conferencia(titulo, cenario, falhas, 'título de reunião de pais e responsáveis', /REUNI[AÃ]O DE PAIS E RESPONS[AÁ]VEIS/i)
-    await conferencia(texto, cenario, falhas, 'concordância e vínculo de Ana Costa', /(?:a respons[aá]vel|os respons[aá]veis) Ana Costa.{0,180}m[aã]e do aluno P\.?\s*H\.?/i)
-    await conferencia(texto, cenario, falhas, 'concordância e vínculo de Rui Dias', /o respons[aá]vel Rui Dias.{0,180}pai da aluna L\.?\s*D\.?/i)
-    await conferencia(texto, cenario, falhas, 'alunos identificados apenas por iniciais', /Pedro Henrique|Laura Dias/i, false)
-    await conferencia(texto, cenario, falhas, 'assunto próprio incluído', /Entrega de avalia[cç][oõ]es [àa]s fam[ií]lias/i)
-    await conferencia(texto, cenario, falhas, 'chip Calendário escolar e datas importantes incluído', /Calend[aá]rio escolar e datas importantes/i)
-    await conferencia(texto, cenario, falhas, 'chip Dúvidas e sugestões das famílias incluído', /D[uú]vidas e sugest[oõ]es das fam[ií]lias/i)
+    await conferencia(texto, cenario, falhas, 'Ana é mãe de P.H. do 5º ano B', /Ana Costa.{0,120}m[aã]e do aluno P\.?\s*H\.?[, ]+do quinto ano B/i)
+    await conferencia(texto, cenario, falhas, 'Rui é pai da aluna L.D. do 5º ano B', /Rui Dias.{0,120}pai da aluna L\.?\s*D\.?[, ]+do quinto ano B/i)
+    await conferencia(texto, cenario, falhas, 'Beatriz é mãe de L.L. do 5º ano B', /Beatriz Lima.{0,120}m[aã]e do aluno L\.?\s*L\.?[, ]+do quinto ano B/i)
+    await conferencia(texto, cenario, falhas, 'alunos identificados apenas por iniciais', /Pedro Henrique|Laura Dias|Lucas Lima/i, false)
+    await conferencia(texto, cenario, falhas, 'chips de calendário e frequência incluídos', /Calend[aá]rio.{0,120}(?:frequ[eê]ncia|atrasos)|(?:frequ[eê]ncia|atrasos).{0,120}calend[aá]rio/i)
+    await conferencia(texto, cenario, falhas, 'assunto próprio da Feira de Ciências incluído', /Feira de Ci[eê]ncias e voluntariado/i)
+    await conferencia(texto, cenario, falhas, 'provas de 1 a 5 de dezembro', /(?:primeiro|1)[º°]? a cinco de dezembro|(?:primeiro|1)[º°]? a 5 de dezembro/i)
+    await conferencia(texto, cenario, falhas, 'recuperação de 8 a 12 de dezembro', /oito a doze de dezembro|8 a 12 de dezembro/i)
+    await conferencia(texto, cenario, falhas, 'ano letivo termina em 19 de dezembro', /dezenove de dezembro|19 de dezembro/i)
+    await conferencia(texto, cenario, falhas, 'portão fecha às 7h10', /sete e dez|sete horas e dez|7h10/i)
+    await conferencia(texto, cenario, falhas, 'tolerância de 10 minutos mantida', /toler[aâ]ncia.{0,80}dez minutos.{0,100}(?:manter|mantida)|toler[aâ]ncia.{0,80}10 minutos.{0,100}(?:manter|mantida)/i)
+    await conferencia(texto, cenario, falhas, 'Feira de Ciências em 28 de novembro', /Feira de Ci[eê]ncias.{0,100}vinte e oito de novembro|Feira de Ci[eê]ncias.{0,100}28 de novembro/i)
+    await conferencia(texto, cenario, falhas, 'Ana Costa se voluntaria', /Ana Costa.{0,120}(?:tamb[eé]m se voluntariou|volunt[aá]ria)/i)
+    await conferencia(texto, cenario, falhas, 'Beatriz Lima oferece ajuda voluntária', /Beatriz Lima.{0,120}(?:ofereceu ajuda|ofereceu aux[ií]lio|volunt[aá]ria)/i)
+    await conferencia(texto, cenario, falhas, 'consenso para reunião preparatória em 10 de novembro', /consenso.{0,220}(?:reuni[aã]o preparat[oó]ria|preparar a feira).{0,160}(?:dez|10) de novembro/i)
+    await conferencia(texto, cenario, falhas, 'Clara participa da reunião preparatória em 10 de novembro', /respons[aá]veis volunt[aá]rias reunir(?:am-se|ão) com a professora de Ci[eê]ncias Clara Dias.{0,100}prazo: dez de novembro/i)
+    await conferencia(texto, cenario, falhas, 'pergunta de estacionamento mencionada', /estacionamento/i)
+    await conferencia(texto, cenario, falhas, 'encerramento às 19h50', /dezenove horas e cinquenta minutos|19h50/i)
+    await conferencia(texto, cenario, falhas, 'não inventa exposição de resultados pedagógicos', /Joana Alves.{0,150}(?:apresentou|exp[oõ]s|relatou).{0,120}(?:resultados|desempenho|notas)/i, false)
+    await conferencia(texto, cenario, falhas, 'pergunta de estacionamento não vira decisão inventada', /estacionamento.{0,120}(?:decidiu-se|fica decidido|foi aprovado|ser[aá] implantado)/i, false)
+    await conferencia(texto, cenario, falhas, 'não atribui consenso à regra do portão', /toler[aâ]ncia.{0,120}(?:por consenso|consensualmente)/i, false)
     await conferencia(texto, cenario, falhas, 'texto em bloco único', /\r|\n/, false)
     const assinaturas = await page.getByRole('heading', { name: 'Assinam' }).locator('xpath=..').innerText()
     await conferencia(assinaturas, cenario, falhas, 'assinatura de Ana inclui um vínculo', /Ana Costa[\s\S]*P\.?\s*H\.?/i)
-    await conferencia(assinaturas, cenario, falhas, 'assinatura de Rui inclui um vínculo', /Rui Dias[\s\S]*L\.?\s*D\.?/i)
+    await conferencia(assinaturas, cenario, falhas, 'assinatura de Rui inclui vínculo feminino', /Rui Dias[\s\S]*aluna L\.?\s*D\.?/i)
+    await conferencia(assinaturas, cenario, falhas, 'assinatura de Beatriz inclui um vínculo', /Beatriz Lima[\s\S]*L\.?\s*L\.?/i)
     salvarFalhas(cenario, falhas)
     const pdfText = await conferirEstruturaEFinalizar(page, cenario, texto, falhas)
     await conferirNoPdf(pdfText, cenario, falhas, 'PDF contém título de pais e responsáveis', /REUNI[AÃ]O DE PAIS E RESPONS[AÁ]VEIS/i)
     await conferirNoPdf(pdfText, cenario, falhas, 'PDF contém numeração de folha', /Folha\s+1\s+de/i)
-    const inicioAssinaturas = pdfText.lastIndexOf('-------------------------------')
-    const pdfAssinaturas = inicioAssinaturas >= 0 ? pdfText.slice(inicioAssinaturas) : ''
-    await conferencia(pdfAssinaturas, cenario, falhas, 'PDF contém assinatura de Ana e vínculo', /Ana Costa.{0,100}P\.?\s*H\.?/is)
-    await conferencia(pdfAssinaturas, cenario, falhas, 'PDF contém assinatura de Rui e vínculo', /Rui Dias.{0,100}L\.?\s*D\.?/is)
-    const linhaAna = pdfAssinaturas.slice(pdfAssinaturas.indexOf('Ana Costa'), pdfAssinaturas.indexOf('Rui Dias') > -1 ? pdfAssinaturas.indexOf('Rui Dias') : undefined)
-    const linhaRui = pdfAssinaturas.slice(pdfAssinaturas.indexOf('Rui Dias'))
+    const inicioAnaPdf = pdfText.lastIndexOf('Ana Costa')
+    const inicioRuiPdf = pdfText.lastIndexOf('Rui Dias')
+    const inicioBeatrizPdf = pdfText.lastIndexOf('Beatriz Lima')
+    const linhaAna = pdfText.slice(inicioAnaPdf, inicioRuiPdf)
+    const linhaRui = pdfText.slice(inicioRuiPdf, inicioBeatrizPdf)
+    const linhaBeatriz = pdfText.slice(inicioBeatrizPdf)
+    await conferencia(linhaAna, cenario, falhas, 'PDF contém assinatura de Ana e vínculo', /Ana Costa.{0,100}P\.?\s*H\.?/is)
+    await conferencia(linhaRui, cenario, falhas, 'PDF contém assinatura de Rui e vínculo feminino', /Rui Dias.{0,100}aluna L\.?\s*D\.?/is)
+    await conferencia(linhaBeatriz, cenario, falhas, 'PDF contém assinatura de Beatriz e vínculo', /Beatriz Lima.{0,100}L\.?\s*L\.?/is)
     await conferencia(linhaAna, cenario, falhas, 'vínculo de Ana não aparece duplicado na assinatura', /P\.?\s*H\.?[\s\S]*P\.?\s*H\.?/i, false)
     await conferencia(linhaRui, cenario, falhas, 'vínculo de Rui não aparece duplicado na assinatura', /L\.?\s*D\.?[\s\S]*L\.?\s*D\.?/i, false)
+    await conferencia(linhaBeatriz, cenario, falhas, 'vínculo de Beatriz não aparece duplicado na assinatura', /L\.?\s*L\.?[\s\S]*L\.?\s*L\.?/i, false)
   } finally {
     salvarFalhas(cenario, falhas)
   }
