@@ -4,6 +4,8 @@ import {
   type AtaExtraida, type MeetingMetadata, type TranscriptSegment,
 } from './ata-api'
 
+import { MODELOS, MODELO_PADRAO } from './types'
+
 export type GeminiErrorKind = 'cota' | 'chave' | 'sobrecarga' | 'rede' | 'conteudo' | 'outro'
 
 export class GeminiError extends Error {
@@ -56,10 +58,13 @@ export function traduzirErro(e: unknown): GeminiError {
   return new GeminiError('outro', `Erro do Gemini: ${msg.slice(0, 300)}`)
 }
 
+const TENTATIVAS_POR_MODELO = 2
+const ESPERA_RETRY_MS = 1000
+
 const dormir = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 /** repete em caso de sobrecarga/rede; cota e chave falham de imediato */
-async function comRetry<T>(fn: () => Promise<T>, tentativas = 3, onTentativa?: (tentativa: number) => void): Promise<T> {
+async function comRetry<T>(fn: () => Promise<T>, tentativas = TENTATIVAS_POR_MODELO, onTentativa?: (tentativa: number) => void): Promise<T> {
   let ultimo: GeminiError | undefined
   for (let i = 0; i < tentativas; i++) {
     try {
@@ -68,7 +73,7 @@ async function comRetry<T>(fn: () => Promise<T>, tentativas = 3, onTentativa?: (
     } catch (e) {
       ultimo = traduzirErro(e)
       if (ultimo.kind !== 'sobrecarga' && ultimo.kind !== 'rede') throw ultimo
-      if (i < tentativas - 1) await dormir(2000 * 2 ** i)
+      if (i < tentativas - 1) await dormir(ESPERA_RETRY_MS)
     }
   }
   throw ultimo!
@@ -81,11 +86,11 @@ async function comFallback<T>(
   onTentativa: (modelo: string, tentativa: number, fallback: boolean) => void,
   prioritarios: string[] = [],
 ): Promise<T> {
-  const modelos = [...new Set([...prioritarios, modelo, 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest'])]
+  const modelos = [...new Set([...prioritarios, modelo, ...MODELOS.map(m => m.id)])]
   for (let i = 0; i < modelos.length; i++) {
     const atual = modelos[i]
     try {
-      return await comRetry(() => fn(atual), 3, tentativa => onTentativa(atual, tentativa, i > 0))
+      return await comRetry(() => fn(atual), TENTATIVAS_POR_MODELO, tentativa => onTentativa(atual, tentativa, i > 0))
     } catch (e) {
       const erro = traduzirErro(e)
       if (erro.kind !== 'sobrecarga' && erro.kind !== 'cota') throw erro
@@ -187,7 +192,7 @@ export async function transcreverAudio(opts: {
     for (let i = 0; i < faixas.length; i++) {
       const etapa = faixas.length > 1 ? `Transcrevendo (parte ${i + 1} de ${faixas.length})` : 'Transcrevendo'
       // O dedicado transcreve o arquivo inteiro; só é tentado antes da primeira faixa.
-      const modeloDaFaixa = i > 0 && modelo === 'gemini-3.5-transcribe' ? 'gemini-3.6-flash' : modelo
+      const modeloDaFaixa = i > 0 && modelo === 'gemini-3.5-transcribe' ? MODELO_PADRAO : modelo
       const { resp, dedicado } = await comFallback(modeloDaFaixa, async atual => {
         const dedicado = atual === 'gemini-3.5-transcribe'
         const audio = createPartFromUri(f.uri!, f.mimeType ?? mimeType)
@@ -200,7 +205,7 @@ export async function transcreverAudio(opts: {
         })
         return { resp, dedicado }
       }, (atual, tentativa, fallback) => onProgress(
-        `${etapa} — ${atual} · tentativa ${tentativa}/3${fallback ? ' (modelo alternativo)' : ''}…`,
+        `${etapa} — ${atual} · tentativa ${tentativa}/${TENTATIVAS_POR_MODELO}${fallback ? ' (modelo alternativo)' : ''}…`,
         0.2 + 0.75 * (i / faixas.length),
       ), i === 0 ? ['gemini-3.5-transcribe'] : [])
       todos.push(...(dedicado
@@ -233,7 +238,7 @@ export async function gerarAta(opts: {
       contents: userPrompt,
       config: { systemInstruction, responseMimeType: 'application/json', responseSchema: ataResponseSchema as never, temperature: 0.2 },
     }), (atual, tentativa, fallback) => opts.onProgress?.(
-      `Redigindo a ata — ${atual} · tentativa ${tentativa}/3${fallback ? ' (modelo alternativo)' : ''}…`, 0.3,
+      `Redigindo a ata — ${atual} · tentativa ${tentativa}/${TENTATIVAS_POR_MODELO}${fallback ? ' (modelo alternativo)' : ''}…`, 0.3,
     ))
     return parseJsonResposta<AtaExtraida>(resp.text, resp.candidates?.[0]?.finishReason)
   } catch (e) {

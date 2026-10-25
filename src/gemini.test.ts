@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FileState, type GoogleGenAI, type GenerateContentParameters, type GenerateContentResponse } from '@google/genai'
+import { MODELOS, MODELO_PADRAO, SETTINGS_PADRAO } from './types'
 import type { MeetingMetadata } from './ata-api'
 import { faixasDeTempo, GeminiError, mimeDoAudio, parseJsonResposta, traduzirErro, gerarAta, transcreverAudio, parseTranscricaoDedicada } from './gemini'
 
@@ -62,7 +63,7 @@ const meta: MeetingMetadata = {
   presidente: { nome: 'Ana', cargo: 'Diretora' }, secretario: { nome: 'Bia', cargo: 'Professora' },
   participantes: [], pauta: ['Planejamento'], anonimizarAlunos: true,
 }
-const cadeiaConfigurada = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest']
+const cadeiaConfigurada = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.6-flash', 'gemini-3.8-flash']
 const cota = () => Object.assign(new Error('RESOURCE_EXHAUSTED'), { status: 429 })
 const sobrecarga = () => Object.assign(new Error('UNAVAILABLE: overloaded'), { status: 503 })
 
@@ -111,7 +112,7 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
       : [])
     await vi.runAllTimersAsync()
     await verificar
-    const esperados = [...modelos.slice(0, indice).flatMap(m => [m, m, m]), modelos[indice]]
+    const esperados = [...modelos.slice(0, indice).flatMap(m => [m, m]), modelos[indice]]
     expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual(esperados)
     for (const [pedido] of caso.generateContent.mock.calls) {
       if (fluxo === 'transcricao' && pedido.model === 'gemini-3.5-transcribe') {
@@ -123,16 +124,33 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
     }
     const mensagens = caso.progresso.mock.calls.map(([mensagem]) => mensagem as string)
     for (const modelo of modelos.slice(0, indice + 1)) {
-      expect(mensagens.some(m => m.includes(modelo) && m.includes('tentativa 1/3'))).toBe(true)
+      expect(mensagens.some(m => m.includes(modelo) && m.includes('tentativa 1/2'))).toBe(true)
     }
     for (const modelo of modelos.slice(0, indice)) {
-      expect(mensagens.some(m => m.includes(modelo) && m.includes('tentativa 3/3'))).toBe(true)
+      expect(mensagens.some(m => m.includes(modelo) && m.includes('tentativa 2/2'))).toBe(true)
     }
     if (indice > 0) expect(mensagens.some(m => m.includes('modelo alternativo'))).toBe(true)
     if (fluxo === 'transcricao') {
       expect(caso.upload).toHaveBeenCalledTimes(1)
       expect(caso.apagar).toHaveBeenCalledWith({ name: 'files/teste' })
     }
+  })
+
+  it('respeita a espera curta e faz somente uma nova tentativa por modelo', async () => {
+    const caso = preparar(() => { throw sobrecarga() })
+    const verificar = expect(caso.executar()).rejects.toMatchObject({ kind: 'sobrecarga' })
+    // Libera upload e leitura de duração sem avançar a espera do retry.
+    await vi.advanceTimersByTimeAsync(0)
+    expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual([modelos[0]])
+    await vi.advanceTimersByTimeAsync(999)
+    expect(caso.generateContent).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual([
+      modelos[0], modelos[0], modelos[1],
+    ])
+    await vi.runAllTimersAsync()
+    await verificar
+    expect(caso.generateContent).toHaveBeenCalledTimes(modelos.length * 2)
   })
 
   it('preserva sobrecarga e informa todos os modelos quando todos falham', async () => {
@@ -142,11 +160,11 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
     })
     await vi.runAllTimersAsync()
     await verificar
-    expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual(modelos.flatMap(m => [m, m, m]))
+    expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual(modelos.flatMap(m => [m, m]))
   })
 
   it.each([
-    ['rede', new TypeError('Failed to fetch'), 3],
+    ['rede', new TypeError('Failed to fetch'), 2],
     ['chave', Object.assign(new Error('API key inválida'), { status: 403 }), 1],
     ['conteudo', new GeminiError('conteudo', 'Conteúdo bloqueado'), 1],
   ])('%s não troca de modelo', async (kind, erro, chamadas) => {
@@ -168,8 +186,8 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
     expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual(modelos.slice(0, indice + 1))
     const mensagens = caso.progresso.mock.calls.map(([mensagem]) => mensagem as string)
     for (const modelo of modelos.slice(0, indice + 1)) {
-      expect(mensagens.some(m => m.includes(modelo) && m.includes('tentativa 1/3'))).toBe(true)
-      expect(mensagens.some(m => m.includes(modelo) && m.includes('tentativa 2/3'))).toBe(false)
+      expect(mensagens.some(m => m.includes(modelo) && m.includes('tentativa 1/2'))).toBe(true)
+      expect(mensagens.some(m => m.includes(modelo) && m.includes('tentativa 2/2'))).toBe(false)
     }
     expect(mensagens.some(m => m.includes(modelos[indice]) && m.includes('modelo alternativo'))).toBe(true)
   })
@@ -194,7 +212,7 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
     await vi.runAllTimersAsync()
     await verificar
     expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual([
-      modelos[0], modelos[0], modelos[0], modelos[1], modelos[2],
+      modelos[0], modelos[0], modelos[1], modelos[2],
     ])
   })
 
@@ -226,13 +244,13 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
         expect(segmentos).toMatchObject([{ text: 'Reunião iniciada.' }])
       } else {
         expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual([
-          'gemini-3.5-transcribe', ...Array(4).fill('gemini-3.6-flash'),
+          'gemini-3.5-transcribe', ...Array(4).fill('gemini-3.5-flash-lite'),
         ])
       }
     })
   }
 
-  it.each([...cadeiaConfigurada, 'gemini-3.5-transcribe'])(
+  it.each([...cadeiaConfigurada, 'gemini-3.5-transcribe', 'modelo-personalizado'])(
     'deduplica a cadeia com modelo configurado %s', async configurado => {
       const caso = preparar(() => { throw sobrecarga() })
       const verificar = expect(caso.executar(configurado)).rejects.toMatchObject({ kind: 'sobrecarga' })
@@ -240,10 +258,10 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
       await verificar
       const esperados = [...new Set([
         ...(fluxo === 'transcricao' ? ['gemini-3.5-transcribe'] : []),
-        configurado, ...cadeiaConfigurada.slice(1),
+        configurado, ...cadeiaConfigurada,
       ])]
       expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual(
-        esperados.flatMap(m => [m, m, m]),
+        esperados.flatMap(m => [m, m]),
       )
     },
   )
@@ -273,4 +291,12 @@ describe('parseTranscricaoDedicada', () => {
     expect(() => parseTranscricaoDedicada(resposta as GenerateContentResponse)).toThrow(GeminiError)
     expect(() => parseTranscricaoDedicada(resposta as GenerateContentResponse)).toThrow(/audioTranscription.text/)
   })
+})
+
+
+it('usa Flash-Lite como padrão econômico nas configurações', () => {
+  expect(MODELO_PADRAO).toBe('gemini-3.5-flash-lite')
+  expect(SETTINGS_PADRAO.modelo).toBe(MODELO_PADRAO)
+  expect(MODELOS[0].nome).toContain('mais econômico')
+  expect(MODELOS.map(m => m.id)).toEqual(cadeiaConfigurada)
 })

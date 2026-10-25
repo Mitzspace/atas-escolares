@@ -44,11 +44,12 @@ export default function Configuracoes() {
           <button type="button" className="btn-secondary" onClick={() => setVerChave(v => !v)}>{verChave ? 'Ocultar' : 'Ver'}</button>
         </div>
         <div>
-          <label className="label" htmlFor="modelo">Modelo</label>
-          <select id="modelo" className="field" value={s.modelo} onChange={e => up({ modelo: e.target.value })}>
+          <label className="label" htmlFor="modelo">Modelo para redigir a ata</label>
+          <select id="modelo" aria-describedby="ajuda-modelo" className="field" value={s.modelo} onChange={e => up({ modelo: e.target.value })}>
             {MODELOS.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
             {!MODELOS.some(m => m.id === s.modelo) && <option value={s.modelo}>{s.modelo}</option>}
           </select>
+          <p id="ajuda-modelo" className="mt-1 text-sm text-slate-600">Flash-Lite é o padrão mais econômico. Se o modelo escolhido estiver sem cota ou sobrecarregado, tentaremos os próximos automaticamente.</p>
         </div>
         <button className="btn-secondary w-full" onClick={testar} disabled={!s.apiKey.trim() || testando}>{testando ? 'Testando…' : 'Testar a chave'}</button>
         <p className="text-xs text-slate-500">No plano gratuito o Google pode usar o conteúdo enviado para melhorar seus produtos. Prefira citar alunos só por iniciais.</p>
