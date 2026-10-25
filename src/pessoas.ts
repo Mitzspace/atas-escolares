@@ -1,11 +1,13 @@
 import type { Participante } from './ata-api'
 
-/** texto livre do vínculo do responsável: "aluno Fulano, 5º ano B" */
-export function vinculoDoResponsavel(aluno: string, turma: string): string {
+export type TratamentoAluno = 'aluno' | 'aluna' | 'aluno(a)'
+
+/** Concordância informada pela usuária; nunca deduzida do nome ou do parentesco. */
+export function vinculoDoResponsavel(aluno: string, turma: string, tratamento: TratamentoAluno = 'aluno(a)'): string {
   const a = aluno.trim()
   const t = turma.trim()
   if (!a) return t
-  return `aluno ${a}${t ? `, ${t}` : ''}`
+  return `${tratamento} ${a}${t ? `, ${t}` : ''}`
 }
 
 /** "Mãe · aluno Fulano, 5º ano B" / "Aluno(a) · 5º ano B" / "Professor(a)" */
@@ -23,5 +25,5 @@ export function iniciaisDoNome(nome: string): string {
 
 /** troca o nome do aluno por iniciais num vínculo como "aluno Pedro Henrique, 5º ano B" */
 export function vinculoAnonimo(vinculo: string): string {
-  return vinculo.replace(/^aluno\s+([^,]+)/i, (_, nome: string) => `aluno ${iniciaisDoNome(nome)}`)
+  return vinculo.replace(/^(aluno\(a\)|aluno|aluna|estudante)\s+([^,]+)/i, (_, rotulo: string, nome: string) => `${rotulo} ${iniciaisDoNome(nome)}`)
 }

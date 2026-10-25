@@ -6,12 +6,12 @@ import Gravador from '../components/Gravador'
 import { assuntosSugeridos, chavesDeAssuntos } from '../assuntos'
 import { apagarSessaoGravacao, getSettings, novoId, proximoNumero, saveAta, saveAudio, saveSettings } from '../db'
 import { mimeDoAudio } from '../gemini'
-import { vinculoDoResponsavel } from '../pessoas'
+import { vinculoDoResponsavel, type TratamentoAluno } from '../pessoas'
 import type { Settings } from '../types'
 
 type Part = Pessoa & { presente: boolean }
 type Aluno = { nome: string; turma: string; foco?: boolean }
-type Responsavel = { nome: string; parentesco: Parentesco; aluno: string; turma: string; foco?: boolean }
+type Responsavel = { nome: string; parentesco: Parentesco; aluno: string; turma: string; tratamento?: TratamentoAluno; foco?: boolean }
 type Parentesco = 'Mãe' | 'Pai' | 'Responsável'
 /** quem recebe a orientação; aluno pode ter um responsável acompanhando */
 type Orientado = { id: number; tipo: 'funcionario' | 'aluno'; nome: string; cargo: string; turma: string; respNome: string; respParentesco: Parentesco; foco?: boolean }
@@ -100,7 +100,7 @@ export default function NovaAta() {
       for (const a of alunos.filter(a => a.nome.trim())) extras.push({ nome: a.nome.trim(), cargo: 'Aluno(a)', presente: true, categoria: 'aluno', vinculo: a.turma.trim() })
     }
     if (tipo === 'pais') {
-      for (const r of responsaveis.filter(r => r.nome.trim())) extras.push({ nome: r.nome.trim(), cargo: r.parentesco, presente: true, categoria: 'responsavel', vinculo: vinculoDoResponsavel(r.aluno, r.turma) })
+      for (const r of responsaveis.filter(r => r.nome.trim())) extras.push({ nome: r.nome.trim(), cargo: r.parentesco, presente: true, categoria: 'responsavel', vinculo: vinculoDoResponsavel(r.aluno, r.turma, r.tratamento) })
     }
     const listaOrientados: Participante[] = []
     if (tipo === 'orientacao') {
@@ -334,6 +334,13 @@ export default function NovaAta() {
               <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
                 <label className="block min-w-0"><span className="label">Nome do aluno</span>
                 <input className="field" autoComplete="off" value={r.aluno} onChange={e => upResp(i, { aluno: e.target.value })} placeholder="Nome do aluno" aria-label="Nome do aluno" />
+                </label>
+                <label className="block min-w-0"><span className="label">Tratamento do aluno</span>
+                <select className="field" value={r.tratamento ?? 'aluno(a)'} onChange={e => upResp(i, { tratamento: e.target.value as TratamentoAluno })}>
+                  <option value="aluno(a)">Aluno(a) — não informado</option>
+                  <option value="aluno">Aluno</option>
+                  <option value="aluna">Aluna</option>
+                </select>
                 </label>
                 <label className="block min-w-0"><span className="label">Turma</span>
                 <input className="field" autoComplete="off" value={r.turma} onChange={e => upResp(i, { turma: e.target.value })} placeholder="Turma" aria-label="Turma" />
