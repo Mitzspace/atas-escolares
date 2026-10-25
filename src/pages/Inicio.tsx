@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { TIPOS_ATA } from '../ata-api'
-import { deleteAta, getSettings, listAtas } from '../db'
+import { deleteAta, getSettings, listAtas, precisaBackup } from '../db'
 import { proximaRota } from '../pipeline'
 import type { AtaRecord } from '../types'
 
@@ -16,9 +16,12 @@ const COR: Record<string, string> = {
 export default function Inicio() {
   const [atas, setAtas] = useState<AtaRecord[] | null>(null)
   const [semChave, setSemChave] = useState(false)
+  const [ultimoBackupEm, setUltimoBackupEm] = useState<number>()
   const nav = useNavigate()
   const recarregar = () => listAtas().then(setAtas)
-  useEffect(() => { recarregar(); getSettings().then(s => setSemChave(!s.apiKey.trim() && !s.groqApiKey.trim())) }, [])
+  useEffect(() => { recarregar(); getSettings().then(s => {
+    setSemChave(!s.apiKey.trim() && !s.groqApiKey.trim()); setUltimoBackupEm(s.ultimoBackupEm)
+  }) }, [])
 
   async function apagar(a: AtaRecord) {
     if (!confirm(`Apagar a ata nº ${a.meta.numero}/${a.meta.ano}? Isso não pode ser desfeito.`)) return
@@ -38,6 +41,10 @@ export default function Inicio() {
           <Link to="/config" className="font-semibold underline">Configurações</Link>.
         </div>
       )}
+      {precisaBackup(atas?.length ?? 0, ultimoBackupEm) && <aside className="rounded-xl border border-rule bg-blue-50 p-4 text-blue-950" aria-label="Lembrete de backup">
+        <p>Suas atas ficam apenas neste aparelho. Guarde um backup para não perder seus registros.</p>
+        <Link to="/config?backup=1" className="btn-secondary mt-3">Fazer backup agora</Link>
+      </aside>}
       <div className="flex items-center justify-between border-b border-rule pb-3"><h2>Atas salvas</h2>{atas && <span className="text-slate-600">{atas.length} {atas.length === 1 ? 'registro' : 'registros'}</span>}</div>
       {atas === null ? <p className="text-slate-500">Carregando…</p> : atas.length === 0 ? (
         <div className="card py-10 text-center">

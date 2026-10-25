@@ -27,6 +27,8 @@ export class ErroProvedor extends Error {
 }
 
 export type Settings = {
+  /** Última exportação concluída neste aparelho, em milissegundos. */
+  ultimoBackupEm?: number
   /** Legado: preferências atuais são independentes por etapa. */
   provedorPreferido: ProvedorId
   provedorTranscricaoPreferido: ProvedorId
@@ -88,4 +90,18 @@ export type AtaRecord = {
   textoEditado?: string
   /** nomes (normalizados) de quem foi convocado na Nova ata; só eles aparecem como ausentes */
   convocados?: string[]
+}
+
+export type BackupAtas = {
+  formato: 'atas-escolares'
+  versao: 1
+  criadoEm: string
+  configuracoes: Partial<Omit<Settings, 'ultimoBackupEm'>>
+  atas: AtaRecord[]
+}
+
+export type OpcoesRestauracao = {
+  modo: 'juntar' | 'substituir'
+  substituirConfiguracoes: boolean
+  incluirChaves: boolean
 }

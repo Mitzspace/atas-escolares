@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import Backup from '../components/Backup'
 import { adicionarExtra, ASSUNTOS_PADRAO, CHAVES_ASSUNTOS, removerExtra, ROTULOS_ASSUNTOS, type ChaveAssuntos } from '../assuntos'
 import { getSettings, saveSettings } from '../db'
 import { testarChave } from '../gemini'
@@ -10,7 +12,12 @@ export default function Configuracoes() {
   const [verChave, setVerChave] = useState({ groq: false, gemini: false })
   const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null)
   const [testando, setTestando] = useState<ProvedorId | null>(null)
+  const [parametros] = useSearchParams()
+  const carregado = s !== null
   useEffect(() => { getSettings().then(setS) }, [])
+  useEffect(() => {
+    if (carregado && parametros.has('backup')) document.getElementById('backup')?.scrollIntoView?.({ block: 'start' })
+  }, [carregado, parametros])
   if (!s) return <p className="text-slate-500">Carregando…</p>
   const up = (patch: Partial<Settings>) => { setS({ ...s, ...patch }); setMsg(null) }
 
@@ -118,6 +125,8 @@ export default function Configuracoes() {
         ))}
         <button type="button" className="btn-secondary w-full" onClick={() => up({ pessoas: [...s.pessoas, { nome: '', cargo: 'Professor(a)' }] })}>＋ Adicionar pessoa</button>
       </section>
+
+      <Backup ultimoBackupEm={s.ultimoBackupEm} onRestaurado={async () => { setS(await getSettings()); setMsg(null) }} />
 
       {msg && <div role="status" className={`card ${msg.ok ? 'border-green-300 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800'}`}>{msg.texto}</div>}
       <button className="btn-primary w-full" onClick={salvar}>Salvar</button>
