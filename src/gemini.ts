@@ -1,4 +1,4 @@
-import { GoogleGenAI, createPartFromUri, createUserContent, FileState } from '@google/genai'
+import { GoogleGenAI, createPartFromUri, createUserContent, FileState, type GenerateContentResponse } from '@google/genai'
 import {
   ataResponseSchema, buildAtaPrompt, buildTranscriptionPrompt, transcriptResponseSchema,
   type AtaExtraida, type MeetingMetadata, type TranscriptSegment,
@@ -111,6 +111,20 @@ export function parseJsonResposta<T>(text: string | undefined, finishReason?: st
   }
 }
 
+/** O modelo dedicado devolve texto corrido, sem diarização ou marcações de tempo. */
+export function parseTranscricaoDedicada(resp: GenerateContentResponse): TranscriptSegment[] {
+  const textos = resp.candidates?.[0]?.content?.parts
+    ?.map(part => part.audioTranscription?.text)
+    .filter((texto): texto is string => typeof texto === 'string' && !!texto.trim())
+  if (!textos?.length) {
+    throw new GeminiError('conteudo', 'O modelo de transcrição não devolveu texto em audioTranscription.text. Tente novamente.')
+  }
+  return [{
+    speaker: 'Falante 1 (texto não segmentado; falantes e tempos não identificados)',
+    start: '00:00', end: '00:00', text: textos.join('\n'),
+  }]
+}
+
 export function mmssParaSegundos(t: string): number {
   const p = t.split(':').map(Number)
   if (p.some(Number.isNaN)) return 0
@@ -172,15 +186,27 @@ export async function transcreverAudio(opts: {
     const todos: TranscriptSegment[] = []
     for (let i = 0; i < faixas.length; i++) {
       const etapa = faixas.length > 1 ? `Transcrevendo (parte ${i + 1} de ${faixas.length})` : 'Transcrevendo'
-      const resp = await comFallback(modelo, atual => ai.models.generateContent({
-        model: atual,
-        contents: createUserContent([createPartFromUri(f.uri!, f.mimeType ?? mimeType), buildTranscriptionPrompt(meta, faixas[i])]),
-        config: { responseMimeType: 'application/json', responseSchema: transcriptResponseSchema as never, temperature: 0.1 },
-      }), (atual, tentativa, fallback) => onProgress(
+      // O dedicado transcreve o arquivo inteiro; só é tentado antes da primeira faixa.
+      const modeloDaFaixa = i > 0 && modelo === 'gemini-3.5-transcribe' ? 'gemini-3.6-flash' : modelo
+      const { resp, dedicado } = await comFallback(modeloDaFaixa, async atual => {
+        const dedicado = atual === 'gemini-3.5-transcribe'
+        const audio = createPartFromUri(f.uri!, f.mimeType ?? mimeType)
+        const resp = await ai.models.generateContent({
+          model: atual,
+          contents: createUserContent(dedicado ? [audio] : [audio, buildTranscriptionPrompt(meta, faixas[i])]),
+          ...(dedicado ? {} : {
+            config: { responseMimeType: 'application/json', responseSchema: transcriptResponseSchema as never, temperature: 0.1 },
+          }),
+        })
+        return { resp, dedicado }
+      }, (atual, tentativa, fallback) => onProgress(
         `${etapa} — ${atual} · tentativa ${tentativa}/3${fallback ? ' (modelo alternativo)' : ''}…`,
         0.2 + 0.75 * (i / faixas.length),
-      ), ['gemini-3.5-transcribe'])
-      todos.push(...parseJsonResposta<TranscriptSegment[]>(resp.text, resp.candidates?.[0]?.finishReason))
+      ), i === 0 ? ['gemini-3.5-transcribe'] : [])
+      todos.push(...(dedicado
+        ? parseTranscricaoDedicada(resp)
+        : parseJsonResposta<TranscriptSegment[]>(resp.text, resp.candidates?.[0]?.finishReason)))
+      if (dedicado) break
     }
     onProgress('Transcrição pronta', 1)
     return todos

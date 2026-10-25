@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FileState, type GoogleGenAI } from '@google/genai'
+import { FileState, type GoogleGenAI, type GenerateContentParameters, type GenerateContentResponse } from '@google/genai'
 import type { MeetingMetadata } from './ata-api'
-import { faixasDeTempo, GeminiError, mimeDoAudio, parseJsonResposta, traduzirErro, gerarAta, transcreverAudio } from './gemini'
+import { faixasDeTempo, GeminiError, mimeDoAudio, parseJsonResposta, traduzirErro, gerarAta, transcreverAudio, parseTranscricaoDedicada } from './gemini'
 
 describe('traduzirErro', () => {
   it('429 vira erro de cota com mensagem clara', () => {
@@ -83,7 +83,13 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
   })
 
   function preparar(responder: (modelo: string) => { text: string }) {
-    const generateContent = vi.fn(async ({ model }: { model: string }) => responder(model))
+    const generateContent = vi.fn(async ({ model }: GenerateContentParameters) => {
+      const resposta = responder(model)
+      if (fluxo === 'transcricao' && model === 'gemini-3.5-transcribe' && resposta.text === '[]') {
+        return { candidates: [{ content: { parts: [{ audioTranscription: { text: 'Reunião iniciada.' } }] } }] }
+      }
+      return resposta
+    })
     const upload = vi.fn(async () => ({ name: 'files/teste', uri: 'uri:teste', state: FileState.ACTIVE }))
     const apagar = vi.fn(async () => ({}))
     const ai = { models: { generateContent }, files: { upload, delete: apagar } } as unknown as GoogleGenAI
@@ -100,11 +106,21 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
       return { text: '[]' }
     })
     const resultado = caso.executar()
-    const verificar = expect(resultado).resolves.toEqual([])
+    const verificar = expect(resultado).resolves.toEqual(fluxo === 'transcricao' && indice === 0
+      ? [{ speaker: expect.stringContaining('texto não segmentado'), start: '00:00', end: '00:00', text: 'Reunião iniciada.' }]
+      : [])
     await vi.runAllTimersAsync()
     await verificar
     const esperados = [...modelos.slice(0, indice).flatMap(m => [m, m, m]), modelos[indice]]
     expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual(esperados)
+    for (const [pedido] of caso.generateContent.mock.calls) {
+      if (fluxo === 'transcricao' && pedido.model === 'gemini-3.5-transcribe') {
+        expect(pedido).not.toHaveProperty('config')
+        expect(pedido.contents).toEqual({ role: 'user', parts: [{ fileData: { fileUri: 'uri:teste', mimeType: 'audio/mp3' } }] })
+      } else {
+        expect(pedido.config).toMatchObject({ responseMimeType: 'application/json', responseSchema: expect.any(Object) })
+      }
+    }
     const mensagens = caso.progresso.mock.calls.map(([mensagem]) => mensagem as string)
     for (const modelo of modelos.slice(0, indice + 1)) {
       expect(mensagens.some(m => m.includes(modelo) && m.includes('tentativa 1/3'))).toBe(true)
@@ -190,6 +206,32 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
     expect(caso.generateContent).toHaveBeenCalledTimes(1)
   })
 
+  if (fluxo === 'transcricao') {
+    it.each([true, false])('áudio longo com dedicado disponível: %s', async disponivel => {
+      vi.stubGlobal('Audio', class {
+        duration = 65 * 60
+        onloadedmetadata?: () => void
+        set src(_valor: string) { queueMicrotask(() => this.onloadedmetadata?.()) }
+      })
+      const caso = preparar(modelo => {
+        if (!disponivel && modelo === 'gemini-3.5-transcribe') throw cota()
+        return { text: '[]' }
+      })
+      const resultado = caso.executar('gemini-3.5-transcribe')
+      await vi.runAllTimersAsync()
+      const segmentos = await resultado
+      if (disponivel) {
+        expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual(['gemini-3.5-transcribe'])
+        expect(segmentos).toHaveLength(1)
+        expect(segmentos).toMatchObject([{ text: 'Reunião iniciada.' }])
+      } else {
+        expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual([
+          'gemini-3.5-transcribe', ...Array(4).fill('gemini-3.6-flash'),
+        ])
+      }
+    })
+  }
+
   it.each([...cadeiaConfigurada, 'gemini-3.5-transcribe'])(
     'deduplica a cadeia com modelo configurado %s', async configurado => {
       const caso = preparar(() => { throw sobrecarga() })
@@ -205,4 +247,30 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
       )
     },
   )
+})
+
+
+describe('parseTranscricaoDedicada', () => {
+  it('reúne as partes do primeiro candidato sem inventar falantes ou tempos', () => {
+    const resposta = { candidates: [
+      { content: { parts: [
+        { text: 'Não é a transcrição' },
+        { audioTranscription: { text: 'Primeira fala.' } },
+        { audioTranscription: { text: 'Segunda fala.' } },
+      ] } },
+      { content: { parts: [{ audioTranscription: { text: 'Alternativa ignorada.' } }] } },
+    ] } as GenerateContentResponse
+    expect(parseTranscricaoDedicada(resposta)).toEqual([{
+      speaker: 'Falante 1 (texto não segmentado; falantes e tempos não identificados)',
+      start: '00:00', end: '00:00', text: 'Primeira fala.\nSegunda fala.',
+    }])
+  })
+
+  it.each([
+    {}, { text: 'Texto fora do campo esperado' },
+    { candidates: [{ content: { parts: [{ audioTranscription: { text: '   ' } }] } }] },
+  ])('recusa resposta sem transcrição útil: %j', resposta => {
+    expect(() => parseTranscricaoDedicada(resposta as GenerateContentResponse)).toThrow(GeminiError)
+    expect(() => parseTranscricaoDedicada(resposta as GenerateContentResponse)).toThrow(/audioTranscription.text/)
+  })
 })
