@@ -2,10 +2,11 @@ import type { AssuntosExtras } from './assuntos'
 import type { AtaExtraida, AtaRenderizada, MeetingMetadata, Pessoa, TranscriptSegment } from './ata-api'
 
 export const MODELOS = [
-  { id: 'gemini-3.5-flash-lite', nome: 'Gemini 3.5 Flash-Lite (padrão, mais econômico)' },
-  { id: 'gemini-flash-lite-latest', nome: 'Gemini Flash-Lite Latest (mais econômico)' },
+  { id: 'gemini-3.8-flash', nome: 'Gemini 3.8 Flash (padrão, melhor qualidade)' },
   { id: 'gemini-3.6-flash', nome: 'Gemini 3.6 Flash' },
-  { id: 'gemini-3.8-flash', nome: 'Gemini 3.8 Flash' },
+  { id: 'gemini-3.5-flash', nome: 'Gemini 3.5 Flash' },
+  { id: 'gemini-3.5-flash-lite', nome: 'Gemini 3.5 Flash-Lite — mais econômico (usado automaticamente se a cota acabar)' },
+  { id: 'gemini-flash-lite-latest', nome: 'Gemini Flash-Lite Latest — mais econômico (usado automaticamente se a cota acabar)' },
 ] as const
 export const MODELO_PADRAO = MODELOS[0].id
 
@@ -46,6 +47,8 @@ export type AtaRecord = {
   meta: MeetingMetadata
   audioNome?: string
   transcript?: TranscriptSegment[]
+  /** Modelo que efetivamente redigiu o corpo da ata, após os fallbacks. */
+  modeloRedacao?: string
   extraida?: AtaExtraida
   renderizada?: AtaRenderizada
   /** texto final editado pela usuária (substitui renderizada.texto) */

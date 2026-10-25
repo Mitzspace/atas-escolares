@@ -63,7 +63,7 @@ const meta: MeetingMetadata = {
   presidente: { nome: 'Ana', cargo: 'Diretora' }, secretario: { nome: 'Bia', cargo: 'Professora' },
   participantes: [], pauta: ['Planejamento'], anonimizarAlunos: true,
 }
-const cadeiaConfigurada = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.6-flash', 'gemini-3.8-flash']
+const cadeiaConfigurada = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest']
 const cota = () => Object.assign(new Error('RESOURCE_EXHAUSTED'), { status: 429 })
 const sobrecarga = () => Object.assign(new Error('UNAVAILABLE: overloaded'), { status: 503 })
 
@@ -107,7 +107,9 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
       return { text: '[]' }
     })
     const resultado = caso.executar()
-    const verificar = expect(resultado).resolves.toEqual(fluxo === 'transcricao' && indice === 0
+    const verificar = expect(resultado).resolves.toEqual(fluxo === 'ata'
+      ? { extraida: [], modeloUsado: modelos[indice] }
+      : indice === 0
       ? [{ speaker: expect.stringContaining('texto não segmentado'), start: '00:00', end: '00:00', text: 'Reunião iniciada.' }]
       : [])
     await vi.runAllTimersAsync()
@@ -130,6 +132,7 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
       expect(mensagens.some(m => m.includes(modelo) && m.includes('tentativa 2/2'))).toBe(true)
     }
     if (indice > 0) expect(mensagens.some(m => m.includes('modelo alternativo'))).toBe(true)
+    if (fluxo === 'ata') expect(caso.progresso.mock.lastCall?.[2]).toBe(modelos[indice])
     if (fluxo === 'transcricao') {
       expect(caso.upload).toHaveBeenCalledTimes(1)
       expect(caso.apagar).toHaveBeenCalledWith({ name: 'files/teste' })
@@ -180,7 +183,8 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
       if (modelo !== modelos[indice]) throw cota()
       return { text: '[]' }
     })
-    const verificar = expect(caso.executar()).resolves.toEqual([])
+    const verificar = expect(caso.executar()).resolves.toEqual(fluxo === 'ata'
+      ? { extraida: [], modeloUsado: modelos[indice] } : [])
     await vi.runAllTimersAsync()
     await verificar
     expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual(modelos.slice(0, indice + 1))
@@ -208,7 +212,8 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
       if (modelo === modelos[1]) throw cota()
       return { text: '[]' }
     })
-    const verificar = expect(caso.executar()).resolves.toEqual([])
+    const verificar = expect(caso.executar()).resolves.toEqual(fluxo === 'ata'
+      ? { extraida: [], modeloUsado: modelos[2] } : [])
     await vi.runAllTimersAsync()
     await verificar
     expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual([
@@ -244,7 +249,7 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
         expect(segmentos).toMatchObject([{ text: 'Reunião iniciada.' }])
       } else {
         expect(caso.generateContent.mock.calls.map(([arg]) => arg.model)).toEqual([
-          'gemini-3.5-transcribe', ...Array(4).fill('gemini-3.5-flash-lite'),
+          'gemini-3.5-transcribe', ...Array(4).fill('gemini-3.8-flash'),
         ])
       }
     })
@@ -294,9 +299,12 @@ describe('parseTranscricaoDedicada', () => {
 })
 
 
-it('usa Flash-Lite como padrão econômico nas configurações', () => {
-  expect(MODELO_PADRAO).toBe('gemini-3.5-flash-lite')
+it('usa Flash como padrão de qualidade e oferece Lite como alternativa econômica', () => {
+  expect(MODELO_PADRAO).toBe('gemini-3.8-flash')
   expect(SETTINGS_PADRAO.modelo).toBe(MODELO_PADRAO)
-  expect(MODELOS[0].nome).toContain('mais econômico')
+  expect(MODELOS[0].nome).toContain('melhor qualidade')
+  for (const modelo of MODELOS.filter(m => m.id.includes('lite'))) {
+    expect(modelo.nome).toContain('mais econômico (usado automaticamente se a cota acabar)')
+  }
   expect(MODELOS.map(m => m.id)).toEqual(cadeiaConfigurada)
 })

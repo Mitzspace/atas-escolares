@@ -159,7 +159,7 @@ export function duracaoDoAudioMin(file: File): Promise<number | null> {
   })
 }
 
-export type Progresso = (etapa: string, fracao: number) => void
+export type Progresso = (etapa: string, fracao: number, modelo?: string) => void
 
 export async function transcreverAudio(opts: {
   apiKey: string
@@ -229,18 +229,21 @@ export async function gerarAta(opts: {
   transcript: TranscriptSegment[]
   onProgress?: Progresso
   ai?: GoogleGenAI
-}): Promise<AtaExtraida> {
+}): Promise<{ extraida: AtaExtraida; modeloUsado: string }> {
   const ai = opts.ai ?? new GoogleGenAI({ apiKey: opts.apiKey })
   const { systemInstruction, userPrompt } = buildAtaPrompt(opts.meta, opts.transcript)
   try {
-    const resp = await comFallback(opts.modelo, atual => ai.models.generateContent({
-      model: atual,
-      contents: userPrompt,
-      config: { systemInstruction, responseMimeType: 'application/json', responseSchema: ataResponseSchema as never, temperature: 0.2 },
+    const { resp, modeloUsado } = await comFallback(opts.modelo, async atual => ({
+      resp: await ai.models.generateContent({
+        model: atual,
+        contents: userPrompt,
+        config: { systemInstruction, responseMimeType: 'application/json', responseSchema: ataResponseSchema as never, temperature: 0.2 },
+      }),
+      modeloUsado: atual,
     }), (atual, tentativa, fallback) => opts.onProgress?.(
-      `Redigindo a ata — ${atual} · tentativa ${tentativa}/${TENTATIVAS_POR_MODELO}${fallback ? ' (modelo alternativo)' : ''}…`, 0.3,
+      `Redigindo a ata — ${atual} · tentativa ${tentativa}/${TENTATIVAS_POR_MODELO}${fallback ? ' (modelo alternativo)' : ''}…`, 0.3, atual,
     ))
-    return parseJsonResposta<AtaExtraida>(resp.text, resp.candidates?.[0]?.finishReason)
+    return { extraida: parseJsonResposta<AtaExtraida>(resp.text, resp.candidates?.[0]?.finishReason), modeloUsado }
   } catch (e) {
     throw traduzirErro(e)
   }

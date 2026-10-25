@@ -49,7 +49,7 @@ export default function Configuracoes() {
             {MODELOS.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
             {!MODELOS.some(m => m.id === s.modelo) && <option value={s.modelo}>{s.modelo}</option>}
           </select>
-          <p id="ajuda-modelo" className="mt-1 text-sm text-slate-600">Flash-Lite é o padrão mais econômico. Se o modelo escolhido estiver sem cota ou sobrecarregado, tentaremos os próximos automaticamente.</p>
+          <p id="ajuda-modelo" className="mt-1 text-sm text-slate-600">Gemini 3.8 Flash é o padrão de melhor qualidade. Se o modelo escolhido estiver sem cota ou sobrecarregado, tentaremos os próximos; os modelos econômicos ficam como alternativa.</p>
         </div>
         <button className="btn-secondary w-full" onClick={testar} disabled={!s.apiKey.trim() || testando}>{testando ? 'Testando…' : 'Testar a chave'}</button>
         <p className="text-xs text-slate-500">No plano gratuito o Google pode usar o conteúdo enviado para melhorar seus produtos. Prefira citar alunos só por iniciais.</p>

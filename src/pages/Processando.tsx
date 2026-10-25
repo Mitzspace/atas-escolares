@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import AvisoModeloEconomico from '../components/AvisoModeloEconomico'
 import { rodarGeracaoAta, rodarTranscricao } from '../pipeline'
 
 export default function Processando() {
@@ -7,6 +8,7 @@ export default function Processando() {
   const nav = useNavigate()
   const [rotulo, setRotulo] = useState('Iniciando…')
   const [fracao, setFracao] = useState(0)
+  const [modeloAtual, setModeloAtual] = useState<string | undefined>()
   const [erro, setErro] = useState('')
   const [tentativa, setTentativa] = useState(0)
   const rodando = useRef(false)
@@ -14,8 +16,8 @@ export default function Processando() {
   useEffect(() => {
     if (rodando.current) return
     rodando.current = true
-    setErro(''); setFracao(0)
-    const onProgress = (r: string, f: number) => { setRotulo(r); setFracao(f) }
+    setErro(''); setFracao(0); setModeloAtual(undefined)
+    const onProgress = (r: string, f: number, modelo?: string) => { setRotulo(r); setFracao(f); setModeloAtual(modelo) }
     const tarefa = etapa === 'ata' ? rodarGeracaoAta(id, onProgress) : rodarTranscricao(id, onProgress)
     tarefa
       .then(() => nav(etapa === 'ata' ? `/ata/${id}/revisar` : `/ata/${id}/transcricao`, { replace: true }))
@@ -48,6 +50,7 @@ export default function Processando() {
           <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200" aria-label="Progresso do processamento" role="progressbar" aria-valuenow={Math.round(fracao * 100)} aria-valuemin={0} aria-valuemax={100}>
             <div className="h-full bg-blue-900 transition-all duration-500" style={{ width: `${Math.max(4, fracao * 100)}%` }} />
           </div>
+          {etapa === 'ata' && <AvisoModeloEconomico modelo={modeloAtual} />}
           <p className="text-sm text-slate-600">
             Isso pode levar alguns minutos, conforme o tamanho do áudio. Mantenha esta tela aberta.
           </p>

@@ -35,10 +35,10 @@ export async function rodarGeracaoAta(id: string, onProgress: Progresso) {
   try {
     const { apiKey, modelo } = await chaveEModelo()
     await patchAta(id, { status: 'processando', erro: undefined })
-    const extraida = await gerarAta({ apiKey, modelo, meta: ata.meta, transcript: ata.transcript, onProgress })
+    const { extraida, modeloUsado } = await gerarAta({ apiKey, modelo, meta: ata.meta, transcript: ata.transcript, onProgress })
     const renderizada = renderAta(ata.meta as MeetingMetadata, extraida)
-    await patchAta(id, { status: 'ata', extraida, renderizada, textoEditado: undefined })
-    onProgress('Ata pronta', 1)
+    await patchAta(id, { status: 'ata', extraida, renderizada, modeloRedacao: modeloUsado, textoEditado: undefined })
+    onProgress('Ata pronta', 1, modeloUsado)
   } catch (e) {
     const msg = e instanceof Error && !('kind' in e) ? e.message : traduzirErro(e).message
     await patchAta(id, { status: 'erro', erro: msg })

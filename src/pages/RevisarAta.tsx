@@ -5,6 +5,7 @@ import { patchAta } from '../db'
 import { useAta, useDebouncedEffect, useSettings } from '../hooks'
 import { rotuloDoParticipante } from '../pessoas'
 import { aplicarPresenca, listaDePresenca, mesmaPessoa, listarMarcadores, preencherMarcador, type Marcador } from '../revisao'
+import AvisoModeloEconomico from '../components/AvisoModeloEconomico'
 import type { AtaRecord } from '../types'
 
 const normalizar = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').trim()
@@ -107,6 +108,8 @@ export default function RevisarAta() {
     <div className="space-y-5">
       <div><p className="eyebrow mb-2">REVISÃO DO DOCUMENTO</p><h1 className="break-words">{atual.renderizada!.titulo}</h1></div>
       <div className="text-sm text-slate-600">{atual.renderizada!.cabecalho.filter(Boolean).join(' · ')}</div>
+
+      <AvisoModeloEconomico modelo={atual.modeloRedacao} />
 
       <section className="card space-y-4">
         <h2 className="font-semibold">Quem estava presente</h2>

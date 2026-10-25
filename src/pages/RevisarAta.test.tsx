@@ -78,3 +78,24 @@ it('atualiza checkbox, texto e assinaturas antes de concluir a gravação da pre
   expect(texto.value).not.toContain('Não compareceu')
   expect(assinaturas()).toContain('Clara Dias')
 })
+
+
+it.each([
+  ['gemini-3.5-flash-lite', true],
+  ['gemini-flash-lite-latest', true],
+  ['gemini-3.8-flash', false],
+  [undefined, false],
+] as const)('reabre ata salva com modelo %s e aviso econômico: %s', async (modeloRedacao, aviso) => {
+  vi.mocked(getAta).mockResolvedValue({
+    id: 'teste', criadaEm: 0, atualizadaEm: 0, status: 'ata', meta, extraida,
+    renderizada: renderAta(meta, extraida), modeloRedacao,
+  })
+  await act(async () => {
+    root.render(<MemoryRouter initialEntries={['/ata/teste/revisar']}>
+      <Routes><Route path="/ata/:id/revisar" element={<RevisarAta />} /></Routes>
+    </MemoryRouter>)
+  })
+  const avisos = [...container.querySelectorAll('[role="status"]')]
+    .filter(elemento => elemento.textContent === 'Esta ata foi redigida por um modelo econômico; revise com atenção.')
+  expect(avisos).toHaveLength(aviso ? 1 : 0)
+})
