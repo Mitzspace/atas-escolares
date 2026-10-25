@@ -1,6 +1,6 @@
 import type { AtaExtraida, MeetingMetadata, TranscriptSegment } from './ata-api'
 import { gerarAta, transcreverAudio, traduzirErro, type Progresso } from './gemini'
-import { redigirGroq, transcreverGroq } from './groq'
+import { LIMITE_AUDIO_GROQ_BYTES, redigirGroq, transcreverGroq } from './groq'
 import { ErroProvedor, type ProvedorId, type Settings } from './types'
 
 export type ResultadoProvedor<T> = { dados: T; provedor: ProvedorId; modelo: string }
@@ -12,7 +12,7 @@ export interface Provedor {
   transcrever(opts: OpcoesTranscricao): Promise<ResultadoProvedor<TranscriptSegment[]>>
   redigir(opts: OpcoesRedacao): Promise<ResultadoProvedor<AtaExtraida>>
 }
-const progressoGemini = (onProgress?: Progresso): Progresso => (etapa, fracao, modelo) => onProgress?.(`Gemini · ${etapa}`, fracao, modelo, 'gemini')
+const progressoGemini = (onProgress?: Progresso, grande = false): Progresso => (etapa, fracao, modelo) => onProgress?.(`${grande ? 'Áudio acima de 25 MB: usando Gemini' : 'Gemini'} · ${etapa}`, fracao, modelo, 'gemini')
 export const provedores: Record<ProvedorId, Provedor> = {
   groq: {
     id: 'groq',
@@ -30,7 +30,7 @@ export const provedores: Record<ProvedorId, Provedor> = {
     async transcrever({ settings, meta, file, onProgress }) {
       const modelos = new Set<string>()
       const dados = await transcreverAudio({ apiKey: settings.apiKey, modelo: settings.modelo, meta, file,
-        onProgress: progressoGemini(onProgress), onModeloUsado: modelo => modelos.add(modelo) })
+        onProgress: progressoGemini(onProgress, file.size > LIMITE_AUDIO_GROQ_BYTES), onModeloUsado: modelo => modelos.add(modelo) })
       return { dados, provedor: 'gemini', modelo: [...modelos].join(', ') }
     },
     async redigir({ settings, meta, transcript, onProgress }) {
@@ -40,9 +40,8 @@ export const provedores: Record<ProvedorId, Provedor> = {
   },
 }
 
-async function comReserva<T>(opts: OpcoesComuns, executar: (provedor: Provedor) => Promise<ResultadoProvedor<T>>) {
+async function comReserva<T>(opts: OpcoesComuns, executar: (provedor: Provedor) => Promise<ResultadoProvedor<T>>, preferido: ProvedorId) {
   const { settings, onProgress } = opts
-  const preferido = settings.provedorPreferido === 'gemini' ? 'gemini' : 'groq'
   const ordem: ProvedorId[] = preferido === 'groq' ? ['groq', 'gemini'] : ['gemini', 'groq']
   const disponiveis = ordem.filter(id => (id === 'groq' ? settings.groqApiKey : settings.apiKey)?.trim())
   if (!disponiveis.length) throw new ErroProvedor('chave', 'Cole uma chave do Groq ou do Gemini em Configurações antes de começar.')
@@ -61,5 +60,9 @@ async function comReserva<T>(opts: OpcoesComuns, executar: (provedor: Provedor) 
   }
   throw new ErroProvedor(ultimo!.kind, `Não foi possível concluir com os provedores configurados. ${falhas.join(' ')}`)
 }
-export const transcreverComProvedores = (opts: OpcoesTranscricao) => comReserva(opts, provedor => provedor.transcrever(opts))
-export const redigirComProvedores = (opts: OpcoesRedacao) => comReserva(opts, provedor => provedor.redigir(opts))
+export const transcreverComProvedores = (opts: OpcoesTranscricao) => {
+  const configuracao = opts.file.size > LIMITE_AUDIO_GROQ_BYTES && opts.settings.apiKey.trim()
+    ? { ...opts, settings: { ...opts.settings, provedorTranscricaoPreferido: 'gemini' as const } } : opts
+  return comReserva(configuracao, provedor => provedor.transcrever(configuracao), configuracao.settings.provedorTranscricaoPreferido ?? 'groq')
+}
+export const redigirComProvedores = (opts: OpcoesRedacao) => comReserva(opts, provedor => provedor.redigir(opts), opts.settings.provedorRedacaoPreferido ?? 'gemini')

@@ -1,4 +1,4 @@
-import { iniciais, parseVinculo } from './render';
+import { iniciais, parseVinculo } from './identificacao';
 import { listarOrientados, type MeetingMetadata, type Participante, type TipoAta, type TranscriptSegment } from './types';
 
 const dataBr = (iso: string) => iso.split('-').reverse().join('/');
@@ -145,6 +145,8 @@ ASSUNTO FORA DA PAUTA NÃO É TAREFA
 - Não descarte ações só porque faltou responsável ou prazo: se uma fala distinta efetivamente assumir a tarefa (por exemplo, "Paulo verificará as vagas até sexta-feira"), registre essa ação e apenas os dados explicitamente confirmados. Sem essa fala distinta, a questão permanece fora da pauta, sem tarefa.
 
 FIDELIDADE DE DADOS E DELIBERAÇÕES
+- Registre todo fato relevante dito, incluindo limiares, quantificadores, justificativas, argumentos contrários e respostas explícitas; não guarde apenas a decisão final. "Mais de quinze faltas" não pode virar apenas "faltas" nem "quinze faltas": preserve a quantidade e o "mais de".
+- Preserve o argumento de Carlos de que muitos pais trabalhavam no sábado e nem todo professor poderia comparecer. Registrar só o voto contrário ou "questionou a data" perde a justificativa; relato de votação e relato dos argumentos são complementares.
 - Preserve no relato ou encaminhamento correspondente todos os horários, datas, durações e limites explicitamente ditos que definam regras, pedidos ou ações. Resumir o pedido não autoriza omitir esses dados; escreva-os por extenso sem alterar o valor ou a que fato se referem.
 - Diferencie horário de duração: "O portão fecha às 7:10" deve constar como "foi informado que o portão fechava às sete horas e dez minutos" (ou horário informado equivalente no pretérito). A tolerância de dez minutos é outro dado: não substitui o horário do portão nem permite calcular um fechamento às sete horas e vinte minutos.
 - Informe de uma regra vigente, como "a tolerância é de dez minutos e vamos manter essa regra", é esclarecimento da direção no relato, não prova de aprovação coletiva. Sem decisão coletiva explícita, não escreva "ficou decidido", "foi aprovado", "os presentes concordaram" ou expressão equivalente e não crie uma deliberação com base nesse informe.

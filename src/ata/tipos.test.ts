@@ -64,11 +64,11 @@ describe('pedagógica com alunos', () => {
     expect(r.texto).toContain('Pedro Lima, aluno do quinto ano B');
     expect(r.assinaturas.at(-1)).toEqual({ nome: 'Pedro Lima', cargo: 'Aluno do quinto ano B' });
   });
-  it('anonimiza o aluno no texto e mantém o nome na assinatura', () => {
+  it('anonimiza o aluno no texto e na assinatura', () => {
     const r = renderAta({ ...meta, anonimizarAlunos: true }, vazia);
     expect(r.texto).toContain('P.L., aluno do quinto ano B');
     expect(r.texto).not.toContain('Pedro Lima');
-    expect(r.assinaturas.at(-1)?.nome).toBe('Pedro Lima');
+    expect(r.assinaturas.at(-1)?.nome).toBe('P.L.');
   });
 });
 

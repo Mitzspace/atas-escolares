@@ -116,3 +116,21 @@ describe('autoria revisada e fidelidade do relato', () => {
     ]));
   });
 });
+
+it('exige preservar o limiar de faltas e o argumento contrário, além do resultado da votação', () => {
+  const fonte = [
+    segmento('Joana Alves', 'O aluno Pedro Henrique acumulou mais de 15 faltas no bimestre.'),
+    segmento('Carlos Mendes', 'Muitos pais trabalham no sábado e nem todo professor pode vir.'),
+  ];
+  const { systemInstruction, userPrompt } = buildAtaPrompt({ ...meta, tipo: 'pedagogica' }, fonte);
+  expect(systemInstruction).toContain('Registre todo fato relevante dito');
+  expect(systemInstruction).toContain('preserve a quantidade e o "mais de"');
+  expect(systemInstruction).toContain('relato de votação e relato dos argumentos são complementares');
+  expect(userPrompt).toContain(fonte[0].text); expect(userPrompt).toContain(fonte[1].text);
+  const resultado = renderAta({ ...meta, tipo: 'pedagogica' }, { ...vazia, itens: [{ pauta: 1,
+    relato: 'Joana Alves informou que Pedro Henrique acumulou mais de 15 faltas. Carlos Mendes argumentou que muitos pais trabalhavam no sábado e nem todo professor poderia comparecer.' }],
+  }, fonte);
+  expect(resultado.texto).toContain('P.H. acumulou mais de quinze faltas');
+  expect(resultado.texto).toContain('muitos pais trabalhavam no sábado e nem todo professor poderia comparecer');
+  expect(resultado.texto).not.toContain('Pedro Henrique');
+});

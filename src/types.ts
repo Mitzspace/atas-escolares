@@ -27,7 +27,10 @@ export class ErroProvedor extends Error {
 }
 
 export type Settings = {
+  /** Legado: preferências atuais são independentes por etapa. */
   provedorPreferido: ProvedorId
+  provedorTranscricaoPreferido: ProvedorId
+  provedorRedacaoPreferido: ProvedorId
   groqApiKey: string
   modeloGroq: string
   modeloTranscricaoGroq: string
@@ -47,6 +50,8 @@ export type Settings = {
 
 export const SETTINGS_PADRAO: Settings = {
   provedorPreferido: 'groq',
+  provedorTranscricaoPreferido: 'groq',
+  provedorRedacaoPreferido: 'gemini',
   groqApiKey: '',
   modeloGroq: MODELO_GROQ_PADRAO,
   modeloTranscricaoGroq: MODELOS_TRANSCRICAO_GROQ[0].id,

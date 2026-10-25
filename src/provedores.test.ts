@@ -11,12 +11,13 @@ const meta: MeetingMetadata = {
   presidente: { nome: 'Maria', cargo: 'Diretora' }, secretario: { nome: 'Joana', cargo: 'Coordenadora' },
   participantes: [], pauta: ['Calendário'], anonimizarAlunos: true,
 }
-const settings: Settings = { ...SETTINGS_PADRAO, apiKey: 'gemini-chave-ficticia', groqApiKey: 'groq-chave-ficticia' }
+const settings: Settings = { ...SETTINGS_PADRAO, provedorRedacaoPreferido: 'groq', apiKey: 'gemini-chave-ficticia', groqApiKey: 'groq-chave-ficticia' }
 const extraida = { itens: [], deliberacoes: [], encaminhamentos: [], pendencias: [] }
 const transcript = [{ speaker: 'Falante', start: '00:00', end: '00:01', text: 'Boa tarde.' }]
 const file = new File(['audio fictício'], 'teste.wav')
 let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>
 beforeEach(() => {
+  localStorage.clear()
   vi.resetAllMocks()
   fetchMock = vi.fn<typeof fetch>()
   vi.stubGlobal('fetch', fetchMock)
@@ -41,7 +42,7 @@ describe.each(['transcrever', 'redigir'] as const)('provedores para %s', operaca
   })
   it.each([429, 503, 'rede'])('usa Gemini como reserva para Groq com %s', async erro => {
     if (erro === 'rede') fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
-    else fetchMock.mockResolvedValue(new Response('{}', { status: Number(erro) }))
+    else fetchMock.mockResolvedValue(new Response('{"error":"TPD"}', { status: Number(erro) }))
     const progresso = vi.fn()
     const resultado = await executar(settings, progresso)
     expect(resultado).toMatchObject({ provedor: 'gemini', modelo: operacao === 'redigir' ? 'gemini-3.6-flash' : 'gemini-3.5-transcribe' })
@@ -63,7 +64,7 @@ describe.each(['transcrever', 'redigir'] as const)('provedores para %s', operaca
   it('respeita a preferência Gemini e reserva Groq', async () => {
     gemini().mockRejectedValue(new GeminiError('cota', 'Cota Gemini esgotada.'))
     fetchMock.mockResolvedValue(respostaGroq())
-    expect(await executar({ ...settings, provedorPreferido: 'gemini' })).toMatchObject({ provedor: 'groq' })
+    expect(await executar({ ...settings, provedorRedacaoPreferido: 'gemini', provedorTranscricaoPreferido: 'gemini' })).toMatchObject({ provedor: 'groq' })
     expect(gemini()).toHaveBeenCalledTimes(1)
   })
   it('não usa a reserva com chave inválida ou erro de conteúdo', async () => {
@@ -75,7 +76,7 @@ describe.each(['transcrever', 'redigir'] as const)('provedores para %s', operaca
     expect(gemini()).not.toHaveBeenCalled()
   })
   it('mostra erro útil quando os dois fornecedores falham', async () => {
-    fetchMock.mockResolvedValue(new Response('{}', { status: 429 }))
+    fetchMock.mockResolvedValue(new Response('{"error":"TPD"}', { status: 429 }))
     gemini().mockRejectedValue(new GeminiError('sobrecarga', 'Gemini sobrecarregado.'))
     await expect(executar()).rejects.toThrow(/Groq:.*Gemini:/)
   })
@@ -92,4 +93,45 @@ it('registra todos os modelos Gemini efetivos em uma transcrição por faixas', 
     return transcript
   })
   expect(await transcreverComProvedores({ settings: { ...settings, groqApiKey: '' }, meta, file })).toMatchObject({ modelo: 'gemini-3.6-flash, gemini-3.8-flash' })
+})
+
+
+it('usa Gemini automaticamente para áudio acima de 25 MB com chave disponível', async () => {
+  const grande = new File(['x'], 'grande.mp3')
+  Object.defineProperty(grande, 'size', { value: 25_000_001 })
+  vi.mocked(transcreverAudio).mockImplementation(async opts => {
+    opts.onProgress?.('Enviando o áudio…', 0.05)
+    opts.onModeloUsado?.('gemini-3.5-transcribe')
+    return transcript
+  })
+  const progresso = vi.fn()
+  expect(await transcreverComProvedores({ settings, meta, file: grande, onProgress: progresso })).toMatchObject({ provedor: 'gemini' })
+  expect(fetchMock).not.toHaveBeenCalled()
+  expect(progresso).toHaveBeenCalledWith(expect.stringContaining('Áudio acima de 25 MB'), 0.05, undefined, 'gemini')
+})
+
+it('429 persistente na redação Groq espera uma janela e usa Gemini', async () => {
+  vi.useFakeTimers()
+  try {
+    fetchMock.mockImplementation(async () => new Response('{"error":"TPM rate limit"}', { status: 429 }))
+    const resultado = redigirComProvedores({ settings, meta, transcript })
+    const conferir = expect(resultado).resolves.toMatchObject({ provedor: 'gemini' })
+    await vi.runAllTimersAsync(); await conferir
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  } finally { vi.useRealTimers() }
+})
+
+it('cota diária local perto do fim passa a redação ao Gemini sem chamada Groq', async () => {
+  const { executarNaJanela } = await import('./groq-limites')
+  await executarNaJanela(settings.groqApiKey, settings.modeloGroq, 179000, async () => ({}), vi.fn())
+  expect(await redigirComProvedores({ settings, meta, transcript })).toMatchObject({ provedor: 'gemini' })
+  expect(fetchMock).not.toHaveBeenCalled()
+})
+
+
+it('padrão transcreve com Whisper e redige com Gemini, com escolhas independentes', async () => {
+  const padrao = { ...SETTINGS_PADRAO, apiKey: 'gemini-ficticia', groqApiKey: 'groq-ficticia' }
+  expect(await redigirComProvedores({ settings: padrao, meta, transcript })).toMatchObject({ provedor: 'gemini' })
+  fetchMock.mockResolvedValue(new Response(JSON.stringify({ segments: [{ start: 0, end: 1, text: 'Olá.' }] }), { status: 200 }))
+  expect(await transcreverComProvedores({ settings: padrao, meta, file })).toMatchObject({ provedor: 'groq' })
 })

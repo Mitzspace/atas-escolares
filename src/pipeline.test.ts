@@ -27,6 +27,7 @@ const ata: AtaRecord = {
 const extraida: AtaExtraida = { itens: [], deliberacoes: [], encaminhamentos: [], pendencias: [] }
 
 beforeEach(() => {
+  localStorage.clear()
   vi.resetAllMocks()
   vi.mocked(getAta).mockResolvedValue(ata)
   vi.mocked(getSettings).mockResolvedValue({ ...SETTINGS_PADRAO, apiKey: 'teste' })
@@ -77,4 +78,17 @@ it('transcreve e redige apenas com Groq, salvando origem/modelo de cada etapa', 
   }))
   expect(gerarAta).not.toHaveBeenCalled()
   expect(fetchMock).toHaveBeenCalledTimes(2)
+})
+
+it('salva a redação sanitizada mesmo quando o modelo revela um aluno da transcrição', async () => {
+  const fonte = [{ speaker: 'Falante', start: '00:00', end: '00:10', text: 'O aluno Pedro Henrique teve mais de 15 faltas.' }]
+  vi.mocked(getAta).mockResolvedValue({ ...ata, transcript: fonte })
+  vi.mocked(gerarAta).mockResolvedValue({ modeloUsado: 'gemini-3.8-flash', extraida: {
+    ...extraida, itens: [{ pauta: 1, relato: 'Pedro Henrique acumulou mais de quinze faltas.' }],
+  } })
+  await rodarGeracaoAta('teste', vi.fn())
+  const salvo = vi.mocked(patchAta).mock.lastCall?.[1]
+  expect(salvo?.extraida?.itens[0].relato).toBe('P.H. acumulou mais de quinze faltas.')
+  expect(salvo?.renderizada?.texto).not.toContain('Pedro Henrique')
+  expect(salvo?.renderizada?.texto).toContain('P.H.')
 })
