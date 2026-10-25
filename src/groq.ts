@@ -1,4 +1,5 @@
 import { ataResponseSchema, buildAtaPrompt, type AtaExtraida, type MeetingMetadata, type TranscriptSegment } from './ata-api'
+import { blocosTranscricao, conferirCotaDiaria, consolidarParciais, estimarTokens, executarNaJanela, LIMITE_ENTRADA_GROQ } from './groq-limites'
 import { dividirAudio, deslocarTempos } from './audio-partes'
 import type { Progresso } from './gemini'
 import { ErroProvedor, MODELOS_GROQ, MODELOS_TRANSCRICAO_GROQ } from './types'
@@ -8,6 +9,10 @@ import { ErroProvedor, MODELOS_GROQ, MODELOS_TRANSCRICAO_GROQ } from './types'
 // GPT-OSS/Qwen: 30 RPM, mil RPD, 8 mil TPM, 200 mil TPD (limites efetivos: console da organização).
 export const LIMITE_AUDIO_GROQ_BYTES = 25_000_000
 const API = 'https://api.groq.com/openai/v1'
+class CotaGroq extends ErroProvedor {
+  constructor(public diaria: boolean) { super('cota', diaria ? 'A cota diária do Groq foi esgotada. Use a reserva Gemini ou aguarde a renovação.' : 'O Groq atingiu o limite temporário de tokens ou requisições.') }
+}
+
 const formatos = new Set(['flac', 'mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'ogg', 'wav', 'webm'])
 
 async function requisitar(path: string, apiKey: string, init: RequestInit = {}): Promise<unknown> {
@@ -21,7 +26,10 @@ async function requisitar(path: string, apiKey: string, init: RequestInit = {}):
     })
     if (!resposta.ok) {
       if (resposta.status === 401 || resposta.status === 403) throw new ErroProvedor('chave', 'A chave do Groq foi recusada. Confira a chave e as permissões em Configurações.')
-      if (resposta.status === 429) throw new ErroProvedor('cota', 'O Groq atingiu o limite de requisições, tokens ou áudio da conta. Aguarde a renovação da cota ou tente a reserva Gemini.')
+      if (resposta.status === 429) {
+        const detalhe = await resposta.text().catch(() => '')
+        throw new CotaGroq(/TPD|per.?day|daily|di[aá]ri/i.test(detalhe))
+      }
       if (resposta.status >= 500) throw new ErroProvedor('sobrecarga', 'O Groq está indisponível ou sobrecarregado no momento.')
       if (resposta.status === 413) throw new ErroProvedor('conteudo', 'O Groq aceita áudios de até 25 MB no plano gratuito. Grave e envie a reunião em partes menores.')
       throw new ErroProvedor('conteudo', `O Groq recusou o pedido (HTTP ${resposta.status}). Confira o modelo e o formato do arquivo em Configurações.`)
@@ -86,7 +94,7 @@ type Schema = { type: string; properties?: Record<string, Schema>; items?: Schem
 function converterSchema(schema: Schema, opcional = false): Objeto {
   const tipo = schema.type.toLowerCase()
   const resultado: Objeto = { type: opcional ? [tipo, 'null'] : tipo }
-  if (schema.description) resultado.description = schema.description
+  // As instruções ficam no prompt; schema sem descrições evita gastar TPM duplicando-as.
   if (schema.properties) {
     resultado.properties = Object.fromEntries(Object.entries(schema.properties).map(([chave, filho]) => [chave, converterSchema(filho, !schema.required?.includes(chave))]))
     resultado.required = Object.keys(schema.properties)
@@ -121,29 +129,65 @@ function validarNo(valor: unknown, schema: Schema, opcional = false): unknown {
 }
 export function validarAtaGroq(valor: unknown): AtaExtraida { return validarNo(valor, ataResponseSchema as Schema) as AtaExtraida }
 
-export async function redigirGroq(opts: { apiKey: string; modelo: string; meta: MeetingMetadata; transcript: TranscriptSegment[]; onProgress?: Progresso }) {
-  if (!MODELOS_GROQ.some(m => m.id === opts.modelo)) throw new ErroProvedor('conteudo', 'Escolha um modelo de redação Groq disponível em Configurações.')
+type OpcoesRedacaoGroq = { apiKey: string; modelo: string; meta: MeetingMetadata; transcript: TranscriptSegment[]; onProgress?: Progresso }
+const regrasParciais = `Extraia AtaExtraida parcial de uma reunião escolar, em português formal e terceira pessoa, sem abertura nem encerramento. Registre SOMENTE fatos destes trechos; não complete a reunião pela pauta/cadastro. Preserve todos os fatos relevantes: números, datas, votos, mais de quinze faltas, argumentos contrários (inclusive pais/professores trabalhando sábado), perguntas e respostas. Respeite o speaker informado por trecho. Rótulos genéricos como "Falante" não identificam uma pessoa, nem herdam autoria automaticamente; nunca adivinhe quem falou. Eu vou mandar é compromisso do speaker identificado, nunca do cargo presumido. Texto corrompido não vira sujeito fictício. Pergunta fora da pauta e será verificada fica em item de pauta 0, não cria tarefa. Não infira consenso; vincule votos àquela decisão. Use os índices originais da pauta. Só extraia tarefas efetivamente assumidas e dados de responsável/prazo ditos. Sem fato, arrays vazios; incerteza vira [confirmar: descrição]. Alunos não orientados: use iniciais quando anonimização estiver ativa. Preserve nomes de eventos e todos os dados relevantes. Use null para campos opcionais sem informação, sem inventar.`
+function pedidoRedacao(opts: OpcoesRedacaoGroq, parcial = false) {
   const { systemInstruction, userPrompt } = buildAtaPrompt(opts.meta, opts.transcript)
-  opts.onProgress?.(`Redigindo com Groq · ${opts.modelo}…`, 0.3, opts.modelo, 'groq')
-  const resposta = await requisitar('chat/completions', opts.apiKey, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: opts.modelo, temperature: 0.2, max_completion_tokens: 4096,
-      ...(opts.modelo.startsWith('openai/gpt-oss-') ? { reasoning_effort: 'low' } : {}),
-      messages: [
-        { role: 'system', content: `${systemInstruction}\n\nResponda em português do Brasil. Na saída estruturada, use null para campos opcionais sem informação; null equivale a omitir o campo. Listas de fatos não registrados ficam vazias. Não invente para preencher campos do schema.` },
-        { role: 'user', content: userPrompt },
-      ],
-      response_format: { type: 'json_schema', json_schema: { name: 'ata_escolar', strict: true, schema: schemaAtaGroq } },
-    }),
-  })
+  return {
+    model: opts.modelo, temperature: 0.2, max_completion_tokens: 3072,
+    ...(opts.modelo.startsWith('openai/gpt-oss-') ? { reasoning_effort: 'low' } : {}),
+    messages: [
+      { role: 'system', content: parcial ? regrasParciais : `${systemInstruction}\n\nResponda em português do Brasil. Na saída estruturada, use null para campos opcionais sem informação; null equivale a omitir o campo. Listas de fatos não registrados ficam vazias. Não invente para preencher campos do schema.` },
+      { role: 'user', content: userPrompt },
+    ],
+    response_format: { type: 'json_schema', json_schema: { name: 'ata_escolar', strict: true, schema: schemaAtaGroq } },
+  }
+}
+function lerAtaResposta(resposta: unknown): AtaExtraida {
   const escolha = objeto(resposta) && Array.isArray(resposta.choices) ? resposta.choices[0] : undefined
   if (!objeto(escolha) || escolha.finish_reason === 'length') throw new ErroProvedor('conteudo', 'O Groq não concluiu a resposta da ata ou ela foi cortada. Reduza a transcrição e tente novamente.')
   const mensagem = escolha.message
   if (!objeto(mensagem) || mensagem.refusal || typeof mensagem.content !== 'string' || !mensagem.content.trim()) throw new ErroProvedor('conteudo', 'O Groq não devolveu o texto da ata ou recusou o conteúdo.')
   let json: unknown
   try { json = JSON.parse(mensagem.content) } catch { throw new ErroProvedor('conteudo', 'O Groq devolveu uma ata fora do formato JSON esperado.') }
-  return { extraida: validarAtaGroq(json), modeloUsado: opts.modelo }
+  return validarAtaGroq(json)
+}
+export async function redigirGroq(opts: OpcoesRedacaoGroq) {
+  if (!MODELOS_GROQ.some(m => m.id === opts.modelo)) throw new ErroProvedor('conteudo', 'Escolha um modelo de redação Groq disponível em Configurações.')
+  const completo = pedidoRedacao(opts)
+  const longo = estimarTokens(completo) > LIMITE_ENTRADA_GROQ
+  const base = pedidoRedacao({ ...opts, transcript: [] }, true)
+  const blocos = longo ? blocosTranscricao(opts.transcript, Math.min(4000, LIMITE_ENTRADA_GROQ - estimarTokens(base) - 128)) : [opts.transcript]
+  const pedidos = blocos.map(transcript => pedidoRedacao({ ...opts, transcript }, longo))
+  for (const pedido of pedidos) {
+    const entrada = estimarTokens(pedido)
+    if (entrada > LIMITE_ENTRADA_GROQ) throw new ErroProvedor('cota', 'A entrada não cabe no limite de tokens do Groq. Use a reserva Gemini ou reduza o cadastro e a pauta.')
+    pedido.max_completion_tokens = Math.min(3072, 7900 - entrada)
+  }
+  conferirCotaDiaria(opts.apiKey, opts.modelo, pedidos.reduce((s, p) => s + estimarTokens(p) + p.max_completion_tokens, 0))
+  const parciais: AtaExtraida[] = []
+  for (let i = 0; i < pedidos.length; i++) {
+    const pedido = pedidos[i]
+    const legenda = `parte ${i + 1} de ${pedidos.length}`
+    const progresso = 0.2 + 0.7 * i / pedidos.length
+    const aguardando = () => opts.onProgress?.(`${legenda}, aguardando limite do Groq…`, progresso, opts.modelo, 'groq')
+    let resposta: unknown
+    for (let tentativa = 0; tentativa < 2; tentativa++) {
+      try {
+        resposta = await executarNaJanela(opts.apiKey, opts.modelo, estimarTokens(pedido) + pedido.max_completion_tokens, () => {
+          opts.onProgress?.(`Redigindo com Groq · ${opts.modelo} · ${legenda}…`, progresso, opts.modelo, 'groq')
+          return requisitar('chat/completions', opts.apiKey, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pedido) })
+        }, aguardando)
+        break
+      } catch (e) {
+        if (!(e instanceof CotaGroq) || e.diaria || tentativa === 1) throw e
+        aguardando()
+      }
+    }
+    parciais.push(lerAtaResposta(resposta))
+  }
+  opts.onProgress?.('Consolidando os relatos sem duplicar decisões e encaminhamentos…', 0.95, opts.modelo, 'groq')
+  return { extraida: parciais.length === 1 ? parciais[0] : consolidarParciais(parciais), modeloUsado: opts.modelo }
 }
 
 /** Consulta somente o catálogo: não envia áudio nem gera texto para testar a chave. */

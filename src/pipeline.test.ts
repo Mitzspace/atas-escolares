@@ -27,6 +27,7 @@ const ata: AtaRecord = {
 const extraida: AtaExtraida = { itens: [], deliberacoes: [], encaminhamentos: [], pendencias: [] }
 
 beforeEach(() => {
+  localStorage.clear()
   vi.resetAllMocks()
   vi.mocked(getAta).mockResolvedValue(ata)
   vi.mocked(getSettings).mockResolvedValue({ ...SETTINGS_PADRAO, apiKey: 'teste' })

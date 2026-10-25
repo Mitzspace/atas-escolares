@@ -17,6 +17,7 @@ const transcript = [{ speaker: 'Falante', start: '00:00', end: '00:01', text: 'B
 const file = new File(['audio fictício'], 'teste.wav')
 let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>
 beforeEach(() => {
+  localStorage.clear()
   vi.resetAllMocks()
   fetchMock = vi.fn<typeof fetch>()
   vi.stubGlobal('fetch', fetchMock)
@@ -41,7 +42,7 @@ describe.each(['transcrever', 'redigir'] as const)('provedores para %s', operaca
   })
   it.each([429, 503, 'rede'])('usa Gemini como reserva para Groq com %s', async erro => {
     if (erro === 'rede') fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
-    else fetchMock.mockResolvedValue(new Response('{}', { status: Number(erro) }))
+    else fetchMock.mockResolvedValue(new Response('{"error":"TPD"}', { status: Number(erro) }))
     const progresso = vi.fn()
     const resultado = await executar(settings, progresso)
     expect(resultado).toMatchObject({ provedor: 'gemini', modelo: operacao === 'redigir' ? 'gemini-3.6-flash' : 'gemini-3.5-transcribe' })
@@ -75,7 +76,7 @@ describe.each(['transcrever', 'redigir'] as const)('provedores para %s', operaca
     expect(gemini()).not.toHaveBeenCalled()
   })
   it('mostra erro útil quando os dois fornecedores falham', async () => {
-    fetchMock.mockResolvedValue(new Response('{}', { status: 429 }))
+    fetchMock.mockResolvedValue(new Response('{"error":"TPD"}', { status: 429 }))
     gemini().mockRejectedValue(new GeminiError('sobrecarga', 'Gemini sobrecarregado.'))
     await expect(executar()).rejects.toThrow(/Groq:.*Gemini:/)
   })
@@ -107,4 +108,22 @@ it('usa Gemini automaticamente para áudio acima de 25 MB com chave disponível'
   expect(await transcreverComProvedores({ settings, meta, file: grande, onProgress: progresso })).toMatchObject({ provedor: 'gemini' })
   expect(fetchMock).not.toHaveBeenCalled()
   expect(progresso).toHaveBeenCalledWith(expect.stringContaining('Áudio acima de 25 MB'), 0.05, undefined, 'gemini')
+})
+
+it('429 persistente na redação Groq espera uma janela e usa Gemini', async () => {
+  vi.useFakeTimers()
+  try {
+    fetchMock.mockImplementation(async () => new Response('{"error":"TPM rate limit"}', { status: 429 }))
+    const resultado = redigirComProvedores({ settings, meta, transcript })
+    const conferir = expect(resultado).resolves.toMatchObject({ provedor: 'gemini' })
+    await vi.runAllTimersAsync(); await conferir
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  } finally { vi.useRealTimers() }
+})
+
+it('cota diária local perto do fim passa a redação ao Gemini sem chamada Groq', async () => {
+  const { executarNaJanela } = await import('./groq-limites')
+  await executarNaJanela(settings.groqApiKey, settings.modeloGroq, 179000, async () => ({}), vi.fn())
+  expect(await redigirComProvedores({ settings, meta, transcript })).toMatchObject({ provedor: 'gemini' })
+  expect(fetchMock).not.toHaveBeenCalled()
 })

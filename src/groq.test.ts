@@ -14,7 +14,8 @@ const file = new File(['áudio fictício'], 'reuniao.wav', { type: 'audio/wav' }
 const apiKey = 'chave-ficticia-testes'
 const resposta = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>
-beforeEach(() => { fetchMock = vi.fn<typeof fetch>(); vi.stubGlobal('fetch', fetchMock) })
+beforeEach(() => {
+  localStorage.clear(); fetchMock = vi.fn<typeof fetch>(); vi.stubGlobal('fetch', fetchMock) })
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 it('envia Whisper em português com verbose_json e segmentos, sem forjar falantes', async () => {
@@ -83,7 +84,7 @@ it.each(['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b'])(
     expect(body.messages[0].content).toContain('nunca adivinhe quem falou')
     expect(body.messages[0].content).toContain('Rótulos genéricos como "Falante"')
     expect(body.messages[0].content).toContain('campos opcionais sem informação')
-    expect(body.max_completion_tokens).toBe(4096)
+    expect(body.max_completion_tokens).toBeLessThanOrEqual(3072)
     if (modelo.startsWith('openai/')) expect(body.reasoning_effort).toBe('low')
     else expect(body).not.toHaveProperty('reasoning_effort')
   },
