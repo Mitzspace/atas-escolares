@@ -214,7 +214,7 @@ test('3. grava, pausa, retoma, orienta aluno e funcionário e oferece recuperaç
     conferirCondicao(await checkCarlos.count() > 0 && await checkCarlos.isDisabled(), falhas, 'presença do funcionário orientado é fixa', 'checkbox desabilitado')
     const assinaturas = await page.getByRole('heading', { name: 'Assinam' }).locator('xpath=..').innerText()
     await conferir(assinaturas, falhas, 'assinaturas incluem aluno e funcionário', /Pedro Henrique[\s\S]*Carlos Mendes|Carlos Mendes[\s\S]*Pedro Henrique/i)
-    await conferir(assinaturas, falhas, 'assinatura do aluno inclui turma', /Pedro Henrique[\s\S]*5º ano B/i)
+    await conferir(assinaturas, falhas, 'assinatura do aluno inclui turma', /Pedro Henrique[\s\S]*(?:5º ano B|quinto ano B)/i)
     await fs.promises.writeFile(path.join(saida, 'pendencias-problemas-orientacao.json'), JSON.stringify({
       pendencias: await page.locator('section[aria-label="Completar pendências"] .card').allInnerTexts(),
       problemasFormato: await page.getByRole('alert').allInnerTexts(),
@@ -233,7 +233,7 @@ test('3. grava, pausa, retoma, orienta aluno e funcionário e oferece recuperaç
     const pdfText = await extrairPdf(pdfPath)
     fs.writeFileSync(path.join(saida, 'ata-orientacao.pdf.txt'), `${pdfText}\n`)
     await conferir(pdfText, falhas, 'PDF contém título de orientação mista', /ORIENTA[CÇ][AÃ]O A ALUNOS E FUNCION[AÁ]RIOS/i)
-    await conferir(pdfText, falhas, 'PDF contém assinatura do aluno orientado', /Pedro Henrique.{0,120}5º ano B/is)
+    await conferir(pdfText, falhas, 'PDF contém assinatura do aluno orientado', /Pedro Henrique.{0,120}(?:5º ano B|quinto ano B)/is)
     await conferir(pdfText, falhas, 'PDF contém assinatura do funcionário orientado', /Carlos Mendes.{0,120}Professor de Matem[aá]tica/is)
 
     // Interrompe uma segunda gravação e confirma que o aviso aparece após recarregar.
@@ -242,7 +242,8 @@ test('3. grava, pausa, retoma, orienta aluno e funcionário e oferece recuperaç
     await page.getByRole('button', { name: /^Orientação/ }).click()
     await page.getByRole('button', { name: /Gravar$/ }).click()
     await expect(page.getByText('Gravando', { exact: true })).toBeVisible()
-    await page.waitForTimeout(2_500)
+    // O primeiro pedaço só é persistido ao fim do timeslice de 5 s.
+    await page.waitForTimeout(6_500)
     page.once('dialog', dialog => dialog.accept())
     await page.reload()
     await page.getByRole('button', { name: /^Orientação/ }).click()

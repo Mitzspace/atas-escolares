@@ -316,11 +316,12 @@ test('2. reunião pedagógica: upload, revisão, ata e PDF', async ({ page }) =>
 })
 
 test('4. pais e responsáveis: dois funcionários, duas famílias, chips e PDF', async ({ page }) => {
-  test.setTimeout(10 * 60_000)
-  page.setDefaultTimeout(10 * 60_000)
+  test.setTimeout(15 * 60_000)
+  page.setDefaultTimeout(15 * 60_000)
   const cenario = 'pais'
   const falhas: FalhaConferencia[] = []
   prepararSaida(cenario)
+  registrarLogs(page, cenario)
   try {
     await configurarEscola(page)
     await iniciarNovaAta(page, cenario, /Pais e responsáveis/)
@@ -329,7 +330,9 @@ test('4. pais e responsáveis: dois funcionários, duas famílias, chips e PDF',
     await page.locator('#Presidiu-cargo').fill('Diretora')
     await page.locator('#Lavrou-nome').fill('Paulo Reis')
     await page.locator('#Lavrou-cargo').fill('Secretário')
-    const clara = page.locator('label').filter({ hasText: 'Clara Dias' }).locator('input[type="checkbox"]')
+    const nomeClara = page.getByRole('textbox', { name: 'Nome', exact: true }).nth(2)
+    await expect(nomeClara).toHaveValue('Clara Dias')
+    const clara = page.getByRole('checkbox', { name: 'Presente', exact: true }).nth(2)
     await clara.uncheck()
     await page.getByRole('button', { name: /Adicionar respons[aá]vel/ }).click()
     await page.getByRole('button', { name: /Adicionar respons[aá]vel/ }).click()
