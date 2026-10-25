@@ -1,12 +1,7 @@
 import { renderAta, type MeetingMetadata } from './ata-api'
 import { deleteAudio, getAudio, getAta, getSettings, patchAta } from './db'
-import { gerarAta, transcreverAudio, traduzirErro, type Progresso } from './gemini'
-
-async function chaveEModelo() {
-  const s = await getSettings()
-  if (!s.apiKey.trim()) throw new Error('Cole a chave da API do Gemini em Configurações antes de começar.')
-  return { apiKey: s.apiKey.trim(), modelo: s.modelo }
-}
+import type { Progresso } from './gemini'
+import { redigirComProvedores, transcreverComProvedores } from './provedores'
 
 /** áudio -> transcrição; guarda o resultado e apaga o áudio local ao terminar */
 export async function rodarTranscricao(id: string, onProgress: Progresso) {
@@ -15,14 +10,15 @@ export async function rodarTranscricao(id: string, onProgress: Progresso) {
   if (!ata) throw new Error('Ata não encontrada.')
   if (!audio) throw new Error('O arquivo de áudio não está mais no aparelho. Crie a ata de novo e envie o áudio.')
   try {
-    const { apiKey, modelo } = await chaveEModelo()
+    const settings = await getSettings()
     await patchAta(id, { status: 'processando', erro: undefined })
     const file = new File([audio.blob], audio.nome, { type: audio.mimeType })
-    const transcript = await transcreverAudio({ apiKey, modelo, meta: ata.meta, file, onProgress })
-    await patchAta(id, { status: 'transcricao', transcript })
+    const resultado = await transcreverComProvedores({ settings, meta: ata.meta, file, onProgress })
+    await patchAta(id, { status: 'transcricao', transcript: resultado.dados, provedorTranscricao: resultado.provedor, modeloTranscricao: resultado.modelo })
+    onProgress('Transcrição pronta', 1, resultado.modelo, resultado.provedor)
     await deleteAudio(id)
   } catch (e) {
-    const msg = e instanceof Error && !('kind' in e) ? e.message : traduzirErro(e).message
+    const msg = e instanceof Error ? e.message : String(e)
     await patchAta(id, { status: 'erro', erro: msg })
     throw new Error(msg)
   }
@@ -33,14 +29,15 @@ export async function rodarGeracaoAta(id: string, onProgress: Progresso) {
   const ata = await getAta(id)
   if (!ata?.transcript) throw new Error('A transcrição não foi encontrada.')
   try {
-    const { apiKey, modelo } = await chaveEModelo()
+    const settings = await getSettings()
     await patchAta(id, { status: 'processando', erro: undefined })
-    const { extraida, modeloUsado } = await gerarAta({ apiKey, modelo, meta: ata.meta, transcript: ata.transcript, onProgress })
+    const resultado = await redigirComProvedores({ settings, meta: ata.meta, transcript: ata.transcript, onProgress })
+    const extraida = resultado.dados
     const renderizada = renderAta(ata.meta as MeetingMetadata, extraida)
-    await patchAta(id, { status: 'ata', extraida, renderizada, modeloRedacao: modeloUsado, textoEditado: undefined })
-    onProgress('Ata pronta', 1, modeloUsado)
+    await patchAta(id, { status: 'ata', extraida, renderizada, modeloRedacao: resultado.modelo, provedorRedacao: resultado.provedor, textoEditado: undefined })
+    onProgress('Ata pronta', 1, resultado.modelo, resultado.provedor)
   } catch (e) {
-    const msg = e instanceof Error && !('kind' in e) ? e.message : traduzirErro(e).message
+    const msg = e instanceof Error ? e.message : String(e)
     await patchAta(id, { status: 'erro', erro: msg })
     throw new Error(msg)
   }

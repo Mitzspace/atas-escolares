@@ -25,3 +25,23 @@ describe('db', () => {
     expect((await listAtas()).length).toBe(0)
   })
 })
+
+it('carrega configurações antigas com os padrões novos sem apagar a chave Gemini', async () => {
+  const { db } = await import('./db')
+  const antigo = { ...SETTINGS_PADRAO, apiKey: 'chave-gemini-ficticia' } as Partial<typeof SETTINGS_PADRAO>
+  delete antigo.groqApiKey; delete antigo.modeloGroq; delete antigo.modeloTranscricaoGroq; delete antigo.provedorPreferido
+  await db.settings.put({ id: 'main', value: antigo as typeof SETTINGS_PADRAO })
+  expect(await getSettings()).toMatchObject({
+    apiKey: 'chave-gemini-ficticia', groqApiKey: '', provedorPreferido: 'groq',
+    modeloGroq: 'openai/gpt-oss-120b', modeloTranscricaoGroq: 'whisper-large-v3',
+  })
+})
+
+it('persiste provedor e modelo de cada etapa sem mudar o índice do banco', async () => {
+  const { getAta } = await import('./db')
+  const registro = { ...ata('origens'), modeloTranscricao: 'whisper-large-v3', provedorTranscricao: 'groq' as const,
+    modeloRedacao: 'gemini-3.8-flash', provedorRedacao: 'gemini' as const }
+  await saveAta(registro)
+  expect(await getAta('origens')).toMatchObject({ ...registro, atualizadaEm: expect.any(Number) })
+  await deleteAta('origens')
+})

@@ -1,7 +1,7 @@
-import { beforeEach, expect, it, vi } from 'vitest'
-import { getAta, getSettings, patchAta } from './db'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { getAta, getSettings, patchAta, getAudio, deleteAudio } from './db'
 import { gerarAta, GeminiError } from './gemini'
-import { rodarGeracaoAta } from './pipeline'
+import { rodarGeracaoAta, rodarTranscricao } from './pipeline'
 import { SETTINGS_PADRAO, type AtaRecord } from './types'
 import type { AtaExtraida } from './ata-api'
 
@@ -42,15 +42,39 @@ it.each(['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest'
     expect(patchAta).toHaveBeenLastCalledWith('teste', expect.objectContaining({
       status: 'ata', extraida, renderizada: expect.any(Object), modeloRedacao: modeloUsado,
     }))
-    expect(progresso).toHaveBeenLastCalledWith('Ata pronta', 1, modeloUsado)
+    expect(progresso).toHaveBeenLastCalledWith('Ata pronta', 1, modeloUsado, 'gemini')
   },
 )
 
 it('não substitui o modelo salvo se a nova geração falha', async () => {
   vi.mocked(gerarAta).mockRejectedValue(new GeminiError('cota', 'Cota esgotada'))
   await expect(rodarGeracaoAta('teste', vi.fn())).rejects.toThrow('Cota esgotada')
-  expect(patchAta).toHaveBeenLastCalledWith('teste', { status: 'erro', erro: 'Cota esgotada' })
+  expect(patchAta).toHaveBeenLastCalledWith('teste', { status: 'erro', erro: expect.stringContaining('Cota esgotada') })
   expect(vi.mocked(patchAta).mock.calls).not.toContainEqual([
     'teste', expect.objectContaining({ modeloRedacao: expect.anything() }),
   ])
+})
+
+
+afterEach(() => vi.unstubAllGlobals())
+
+it('transcreve e redige apenas com Groq, salvando origem/modelo de cada etapa', async () => {
+  vi.mocked(getSettings).mockResolvedValue({ ...SETTINGS_PADRAO, groqApiKey: 'groq-chave-ficticia', apiKey: '' })
+  vi.mocked(getAudio).mockResolvedValue({ id: 'teste', blob: new Blob(['audio fictício']), nome: 'teste.wav', mimeType: 'audio/wav' })
+  const fetchMock = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ segments: [{ start: 0, end: 2, text: 'Boa tarde.' }] }), { status: 200 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(extraida) } }] }), { status: 200 }))
+  vi.stubGlobal('fetch', fetchMock)
+  const progresso = vi.fn()
+  await rodarTranscricao('teste', progresso)
+  const transcript = [{ speaker: 'Falante', start: '00:00', end: '00:02', text: 'Boa tarde.' }]
+  expect(patchAta).toHaveBeenLastCalledWith('teste', { status: 'transcricao', transcript, provedorTranscricao: 'groq', modeloTranscricao: 'whisper-large-v3' })
+  expect(deleteAudio).toHaveBeenCalledWith('teste')
+  vi.mocked(getAta).mockResolvedValue({ ...ata, transcript })
+  await rodarGeracaoAta('teste', progresso)
+  expect(patchAta).toHaveBeenLastCalledWith('teste', expect.objectContaining({
+    status: 'ata', provedorRedacao: 'groq', modeloRedacao: 'openai/gpt-oss-120b', extraida,
+  }))
+  expect(gerarAta).not.toHaveBeenCalled()
+  expect(fetchMock).toHaveBeenCalledTimes(2)
 })

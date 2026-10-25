@@ -95,10 +95,11 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
     const apagar = vi.fn(async () => ({}))
     const ai = { models: { generateContent }, files: { upload, delete: apagar } } as unknown as GoogleGenAI
     const progresso = vi.fn()
+    const modeloUsado = vi.fn()
     const executar = (modelo = cadeiaConfigurada[0]) => fluxo === 'ata'
       ? gerarAta({ apiKey: 'teste', modelo, meta, transcript: [], ai, onProgress: progresso })
-      : transcreverAudio({ apiKey: 'teste', modelo, meta, file: new File(['audio'], 'teste.mp3'), ai, onProgress: progresso })
-    return { generateContent, upload, apagar, progresso, executar }
+      : transcreverAudio({ apiKey: 'teste', modelo, meta, file: new File(['audio'], 'teste.mp3'), ai, onProgress: progresso, onModeloUsado: modeloUsado })
+    return { generateContent, upload, apagar, progresso, modeloUsado, executar }
   }
 
   it.each(modelos.map((_, indice) => indice))('sucesso no modelo de índice %i, após esgotar os anteriores', async indice => {
@@ -134,6 +135,7 @@ describe.each(['transcricao', 'ata'] as const)('fallback na %s', fluxo => {
     if (indice > 0) expect(mensagens.some(m => m.includes('modelo alternativo'))).toBe(true)
     if (fluxo === 'ata') expect(caso.progresso.mock.lastCall?.[2]).toBe(modelos[indice])
     if (fluxo === 'transcricao') {
+      expect(caso.modeloUsado).toHaveBeenCalledWith(modelos[indice])
       expect(caso.upload).toHaveBeenCalledTimes(1)
       expect(caso.apagar).toHaveBeenCalledWith({ name: 'files/teste' })
     }

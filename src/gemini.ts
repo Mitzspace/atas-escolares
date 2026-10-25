@@ -4,17 +4,10 @@ import {
   type AtaExtraida, type MeetingMetadata, type TranscriptSegment,
 } from './ata-api'
 
-import { MODELOS, MODELO_PADRAO } from './types'
+import { MODELOS, MODELO_PADRAO, ErroProvedor, type TipoErroProvedor, type ProvedorId } from './types'
 
-export type GeminiErrorKind = 'cota' | 'chave' | 'sobrecarga' | 'rede' | 'conteudo' | 'outro'
-
-export class GeminiError extends Error {
-  kind: GeminiErrorKind
-  constructor(kind: GeminiErrorKind, message: string) {
-    super(message)
-    this.kind = kind
-  }
-}
+export type GeminiErrorKind = TipoErroProvedor
+export class GeminiError extends ErroProvedor {}
 
 export const FAIXA_MINUTOS = 20
 /** acima disso a transcrição é pedida por faixas de tempo */
@@ -159,13 +152,14 @@ export function duracaoDoAudioMin(file: File): Promise<number | null> {
   })
 }
 
-export type Progresso = (etapa: string, fracao: number, modelo?: string) => void
+export type Progresso = (etapa: string, fracao: number, modelo?: string, provedor?: ProvedorId) => void
 
 export async function transcreverAudio(opts: {
   apiKey: string
   modelo: string
   meta: MeetingMetadata
   file: File
+  onModeloUsado?: (modelo: string) => void
   onProgress?: Progresso
   ai?: GoogleGenAI
 }): Promise<TranscriptSegment[]> {
@@ -193,7 +187,7 @@ export async function transcreverAudio(opts: {
       const etapa = faixas.length > 1 ? `Transcrevendo (parte ${i + 1} de ${faixas.length})` : 'Transcrevendo'
       // O dedicado transcreve o arquivo inteiro; só é tentado antes da primeira faixa.
       const modeloDaFaixa = i > 0 && modelo === 'gemini-3.5-transcribe' ? MODELO_PADRAO : modelo
-      const { resp, dedicado } = await comFallback(modeloDaFaixa, async atual => {
+      const { resp, dedicado, modeloUsado } = await comFallback(modeloDaFaixa, async atual => {
         const dedicado = atual === 'gemini-3.5-transcribe'
         const audio = createPartFromUri(f.uri!, f.mimeType ?? mimeType)
         const resp = await ai.models.generateContent({
@@ -203,7 +197,7 @@ export async function transcreverAudio(opts: {
             config: { responseMimeType: 'application/json', responseSchema: transcriptResponseSchema as never, temperature: 0.1 },
           }),
         })
-        return { resp, dedicado }
+        return { resp, dedicado, modeloUsado: atual }
       }, (atual, tentativa, fallback) => onProgress(
         `${etapa} — ${atual} · tentativa ${tentativa}/${TENTATIVAS_POR_MODELO}${fallback ? ' (modelo alternativo)' : ''}…`,
         0.2 + 0.75 * (i / faixas.length),
@@ -211,6 +205,7 @@ export async function transcreverAudio(opts: {
       todos.push(...(dedicado
         ? parseTranscricaoDedicada(resp)
         : parseJsonResposta<TranscriptSegment[]>(resp.text, resp.candidates?.[0]?.finishReason)))
+      opts.onModeloUsado?.(modeloUsado)
       if (dedicado) break
     }
     onProgress('Transcrição pronta', 1)

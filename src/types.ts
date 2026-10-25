@@ -10,7 +10,28 @@ export const MODELOS = [
 ] as const
 export const MODELO_PADRAO = MODELOS[0].id
 
+export type ProvedorId = 'groq' | 'gemini'
+export const MODELOS_GROQ = [
+  { id: 'openai/gpt-oss-120b', nome: 'GPT-OSS 120B (padrão, maior capacidade)' },
+  { id: 'qwen/qwen3.8-27b', nome: 'Qwen 3.8 27B' },
+  { id: 'openai/gpt-oss-20b', nome: 'GPT-OSS 20B (mais rápido)' },
+] as const
+export const MODELO_GROQ_PADRAO = MODELOS_GROQ[0].id
+export const MODELOS_TRANSCRICAO_GROQ = [
+  { id: 'whisper-large-v3', nome: 'Whisper Large V3 (padrão, maior precisão)' },
+  { id: 'whisper-large-v3-turbo', nome: 'Whisper Large V3 Turbo (mais rápido)' },
+] as const
+export type TipoErroProvedor = 'cota' | 'chave' | 'sobrecarga' | 'rede' | 'conteudo' | 'outro'
+export class ErroProvedor extends Error {
+  constructor(public kind: TipoErroProvedor, message: string) { super(message) }
+}
+
 export type Settings = {
+  provedorPreferido: ProvedorId
+  groqApiKey: string
+  modeloGroq: string
+  modeloTranscricaoGroq: string
+  /** Chave Gemini legada, mantida para compatibilidade. */
   apiKey: string
   modelo: string
   escola: string
@@ -25,6 +46,10 @@ export type Settings = {
 }
 
 export const SETTINGS_PADRAO: Settings = {
+  provedorPreferido: 'groq',
+  groqApiKey: '',
+  modeloGroq: MODELO_GROQ_PADRAO,
+  modeloTranscricaoGroq: MODELOS_TRANSCRICAO_GROQ[0].id,
   apiKey: '',
   modelo: MODELO_PADRAO,
   escola: '',
@@ -47,6 +72,9 @@ export type AtaRecord = {
   meta: MeetingMetadata
   audioNome?: string
   transcript?: TranscriptSegment[]
+  provedorTranscricao?: ProvedorId
+  modeloTranscricao?: string
+  provedorRedacao?: ProvedorId
   /** Modelo que efetivamente redigiu o corpo da ata, após os fallbacks. */
   modeloRedacao?: string
   extraida?: AtaExtraida
