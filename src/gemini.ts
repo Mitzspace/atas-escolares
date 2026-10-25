@@ -59,18 +59,41 @@ export function traduzirErro(e: unknown): GeminiError {
 const dormir = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 /** repete em caso de sobrecarga/rede; cota e chave falham de imediato */
-async function comRetry<T>(fn: () => Promise<T>, tentativas = 3): Promise<T> {
+async function comRetry<T>(fn: () => Promise<T>, tentativas = 3, onTentativa?: (tentativa: number) => void): Promise<T> {
   let ultimo: GeminiError | undefined
   for (let i = 0; i < tentativas; i++) {
     try {
+      onTentativa?.(i + 1)
       return await fn()
     } catch (e) {
       ultimo = traduzirErro(e)
       if (ultimo.kind !== 'sobrecarga' && ultimo.kind !== 'rede') throw ultimo
-      await dormir(2000 * 2 ** i)
+      if (i < tentativas - 1) await dormir(2000 * 2 ** i)
     }
   }
   throw ultimo!
+}
+
+/** Só a sobrecarga esgotada permite trocar o modelo; upload não usa fallback. */
+async function comFallback<T>(
+  modelo: string,
+  fn: (modelo: string) => Promise<T>,
+  onTentativa: (modelo: string, tentativa: number, fallback: boolean) => void,
+): Promise<T> {
+  const modelos = [...new Set([modelo, 'gemini-3.6-flash', 'gemini-flash-latest'])]
+  for (let i = 0; i < modelos.length; i++) {
+    const atual = modelos[i]
+    try {
+      return await comRetry(() => fn(atual), 3, tentativa => onTentativa(atual, tentativa, i > 0))
+    } catch (e) {
+      const erro = traduzirErro(e)
+      if (erro.kind !== 'sobrecarga') throw erro
+      if (i === modelos.length - 1) {
+        throw new GeminiError('sobrecarga', `${erro.message} Modelos tentados: ${modelos.join(', ')}.`)
+      }
+    }
+  }
+  throw new GeminiError('sobrecarga', 'Nenhum modelo disponível no momento.')
 }
 
 export function parseJsonResposta<T>(text: string | undefined, finishReason?: string): T {
@@ -147,12 +170,15 @@ export async function transcreverAudio(opts: {
     const faixas = dur && dur > LIMITE_SEM_FAIXAS_MIN ? faixasDeTempo(dur) : [undefined]
     const todos: TranscriptSegment[] = []
     for (let i = 0; i < faixas.length; i++) {
-      onProgress(faixas.length > 1 ? `Transcrevendo (parte ${i + 1} de ${faixas.length})…` : 'Transcrevendo…', 0.2 + 0.75 * (i / faixas.length))
-      const resp = await comRetry(() => ai.models.generateContent({
-        model: modelo,
+      const etapa = faixas.length > 1 ? `Transcrevendo (parte ${i + 1} de ${faixas.length})` : 'Transcrevendo'
+      const resp = await comFallback(modelo, atual => ai.models.generateContent({
+        model: atual,
         contents: createUserContent([createPartFromUri(f.uri!, f.mimeType ?? mimeType), buildTranscriptionPrompt(meta, faixas[i])]),
         config: { responseMimeType: 'application/json', responseSchema: transcriptResponseSchema as never, temperature: 0.1 },
-      }))
+      }), (atual, tentativa, fallback) => onProgress(
+        `${etapa} — ${atual} · tentativa ${tentativa}/3${fallback ? ' (modelo alternativo)' : ''}…`,
+        0.2 + 0.75 * (i / faixas.length),
+      ))
       todos.push(...parseJsonResposta<TranscriptSegment[]>(resp.text, resp.candidates?.[0]?.finishReason))
     }
     onProgress('Transcrição pronta', 1)
@@ -169,16 +195,19 @@ export async function gerarAta(opts: {
   modelo: string
   meta: MeetingMetadata
   transcript: TranscriptSegment[]
+  onProgress?: Progresso
   ai?: GoogleGenAI
 }): Promise<AtaExtraida> {
   const ai = opts.ai ?? new GoogleGenAI({ apiKey: opts.apiKey })
   const { systemInstruction, userPrompt } = buildAtaPrompt(opts.meta, opts.transcript)
   try {
-    const resp = await comRetry(() => ai.models.generateContent({
-      model: opts.modelo,
+    const resp = await comFallback(opts.modelo, atual => ai.models.generateContent({
+      model: atual,
       contents: userPrompt,
       config: { systemInstruction, responseMimeType: 'application/json', responseSchema: ataResponseSchema as never, temperature: 0.2 },
-    }))
+    }), (atual, tentativa, fallback) => opts.onProgress?.(
+      `Redigindo a ata — ${atual} · tentativa ${tentativa}/3${fallback ? ' (modelo alternativo)' : ''}…`, 0.3,
+    ))
     return parseJsonResposta<AtaExtraida>(resp.text, resp.candidates?.[0]?.finishReason)
   } catch (e) {
     throw traduzirErro(e)
