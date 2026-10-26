@@ -5,7 +5,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { getAta, getSettings, patchAta } from '../db'
 import RevisarTranscricao from './RevisarTranscricao'
 import { SETTINGS_PADRAO } from '../types'
+import { identificarFalantes } from '../provedores'
 
+vi.mock('../provedores', () => ({ identificarFalantes: vi.fn() }))
 vi.mock('../db', () => ({ getAta: vi.fn(), getSettings: vi.fn(), patchAta: vi.fn() }))
 let container: HTMLDivElement
 let root: Root
@@ -51,4 +53,22 @@ it('atribui falantes por trecho sem renomear todas as vozes do Whisper', async (
     { speaker: 'Maria', start: '00:00', end: '00:02', text: 'Sou Maria, diretora.' },
     { speaker: 'Falante', start: '00:03', end: '00:05', text: 'Sou Rui.' },
   ] })
+})
+
+it('identifica de novo pela função integrada, salva os nomes e mantém incerteza explícita', async () => {
+  vi.mocked(getSettings).mockResolvedValue({ ...SETTINGS_PADRAO, apiKey: 'chave-ficticia' })
+  const transcript = [
+    { speaker: 'Maria', start: '00:00', end: '00:02', text: 'Sou Maria, diretora.' },
+    { speaker: 'Falante não identificado', start: '00:03', end: '00:05', text: 'Sou Rui.' },
+  ]
+  vi.mocked(identificarFalantes).mockResolvedValue({ dados: transcript, identificados: 1, naoIdentificados: 1 })
+  await act(async () => root.render(<MemoryRouter initialEntries={['/ata/teste/transcricao']}>
+    <Routes><Route path="/ata/:id/transcricao" element={<RevisarTranscricao />} /></Routes>
+  </MemoryRouter>))
+  const botao = [...container.querySelectorAll('button')].find(b => b.textContent === 'Identificar de novo com IA')!
+  await act(async () => botao.click())
+  expect(identificarFalantes).toHaveBeenCalledOnce()
+  expect(container.querySelector<HTMLInputElement>('[aria-label="Falante do trecho 1"]')?.value).toBe('Maria')
+  expect(container.querySelector<HTMLInputElement>('[aria-label="Falante do trecho 2"]')?.value).toBe('Falante não identificado')
+  expect(patchAta).toHaveBeenCalledWith('teste', { transcript })
 })

@@ -64,6 +64,7 @@ export default function RevisarTranscricao() {
         <button className="btn-secondary w-full" disabled={identificando || !settings || (!settings.apiKey && !settings.groqApiKey)} onClick={identificar}>Identificar de novo com IA</button>
         {mensagem && <p role="status">{mensagem}</p>}
       </section>
+      <fieldset disabled={identificando} className="space-y-5" aria-label="Trechos da transcrição">
       <datalist id={listaFalantesId}>
         {[...new Set([quemOrienta(ata.meta).nome, quemLavra(ata.meta).nome, ...ata.meta.participantes.map(p => p.nome)])].filter(Boolean).map(nome => <option key={nome} value={nome} />)}
       </datalist>
@@ -93,6 +94,7 @@ export default function RevisarTranscricao() {
           </li>
         ))}
       </ul>
+      </fieldset>
 
       <div className="action-bar">
         <div className="mx-auto max-w-3xl"><button className="btn-primary w-full" disabled={identificando} onClick={gerar}>Gerar a ata</button></div>
