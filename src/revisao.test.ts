@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { renderAta, type AtaExtraida, type MeetingMetadata } from './ata-api'
+import { renderAta, renderAtaTextoLivre, type AtaExtraida, type MeetingMetadata } from './ata-api'
 import { aplicarPresenca, listaDePresenca, listarMarcadores, preencherIguais, preencherMarcador } from './revisao'
 import type { AtaRecord } from './types'
 
@@ -335,5 +335,74 @@ describe('vários orientados', () => {
     const r = aplicarPresenca(a, [{ ...mae, presente: false }])
     expect(r.meta.orientado?.nome).toBe('Ana Lima')
     expect(r.renderizada.assinaturas.map(x => x.nome)).toEqual(['Maria Souza', 'Paulo Reis', 'Ana Lima'])
+  })
+})
+
+describe('aplicarPresenca: ata digitada sem IA ("Usar como está")', () => {
+  const corpo = 'Tratou-se da Feira de Ciências. Ficou combinado enviar o regulamento.'
+  const livre = (): AtaRecord => ({ id: 'y', criadaEm: 0, atualizadaEm: 0, status: 'ata', meta, renderizada: renderAtaTextoLivre(meta, corpo) })
+  const desmarca = meta.participantes.map(p => (p.nome === 'Carlos Mendes' ? { ...p, presente: false } : p))
+
+  it('alternar presença mantém o corpo digitado e atualiza abertura e ausentes', () => {
+    const r = aplicarPresenca(livre(), desmarca)
+    expect(r.texto).toContain(corpo)
+    expect(r.texto).toContain('Não compareceu o seguinte convocado: Carlos Mendes, professor')
+    expect(r.texto).toContain('totalizando três presentes')
+    expect(r.renderizada.assinaturas.map(a => a.nome)).not.toContain('Carlos Mendes')
+  })
+
+  it('voltar a marcar restaura o texto original', () => {
+    const a = livre()
+    const ida = aplicarPresenca(a, desmarca)
+    const volta = aplicarPresenca({ ...a, meta: ida.meta, renderizada: ida.renderizada, convocados: ida.convocados }, meta.participantes)
+    expect(volta.texto).toBe(a.renderizada!.texto)
+  })
+
+  it('preserva a edição manual do corpo', () => {
+    const a = livre()
+    const editado = a.renderizada!.texto.replace('Tratou-se da Feira de Ciências', 'Tratou-se da Feira de Ciências e Artes')
+    const r = aplicarPresenca({ ...a, textoEditado: editado }, desmarca)
+    expect(r.texto).toContain('Feira de Ciências e Artes')
+    expect(r.texto).toContain('Carlos Mendes')
+    expect(r.textoPreservado).toBe(true)
+  })
+
+  it('texto renderizado que não bate: não lança nem perde o texto', () => {
+    const a = { ...livre(), renderizada: { ...livre().renderizada!, texto: 'Texto sem a estrutura esperada.' } }
+    const r = aplicarPresenca(a, desmarca)
+    expect(r.texto).toBe('Texto sem a estrutura esperada.')
+    expect(r.textoPreservado).toBe(false)
+  })
+})
+
+describe('aplicarPresenca: cadastro v2 (orientados são participantes)', () => {
+  const v2: MeetingMetadata = {
+    ...meta, tipo: 'orientacao', presidente: undefined, secretario: undefined, ordinaria: undefined,
+    responsavel: { nome: 'Maria Souza', cargo: 'Diretora' },
+    participantes: [
+      { nome: 'Pedro Lima', cargo: 'Aluno', categoria: 'aluno', vinculo: '5º ano B', presente: true, recebeOrientacao: true },
+      { nome: 'Clara Lima', cargo: 'Mãe', categoria: 'responsavel', vinculo: 'aluno Pedro Lima, 5º ano B', presente: true },
+    ],
+  }
+  const ex: AtaExtraida = { ...extraida, orientacoes: ['Respeitar os colegas.'], cienciaOrientado: true }
+  const a: AtaRecord = { id: 'z', criadaEm: 0, atualizadaEm: 0, status: 'ata', meta: v2, extraida: ex, renderizada: renderAta(v2, ex) }
+
+  it('mudar a presença de outro participante não remove o orientado', () => {
+    const r = aplicarPresenca(a, v2.participantes.map(p => (p.nome === 'Clara Lima' ? { ...p, presente: false } : p)))
+    expect(r.meta.participantes.map(p => p.nome)).toEqual(['Pedro Lima', 'Clara Lima'])
+    expect(r.texto).toContain('o aluno orientado Pedro Lima')
+    expect(r.renderizada.assinaturas.map(x => x.nome)).toContain('Pedro Lima')
+  })
+
+  it('o orientado fica mesmo se a lista o trouxer desmarcado e fora dos convocados', () => {
+    const r = aplicarPresenca({ ...a, convocados: [] }, v2.participantes.map(p => ({ ...p, presente: p.nome !== 'Pedro Lima' })))
+    expect(r.meta.participantes.map(p => p.nome)).toContain('Pedro Lima')
+  })
+
+  it('formato legado continua tirando o orientado de participantes', () => {
+    const leg: MeetingMetadata = { ...meta, tipo: 'orientacao', orientados: [{ nome: 'Pedro Lima', cargo: 'Aluno', categoria: 'aluno', vinculo: '5º ano B', presente: true }] }
+    const al: AtaRecord = { ...a, meta: leg, renderizada: renderAta(leg, ex) }
+    const r = aplicarPresenca(al, [...leg.participantes, ...leg.orientados!])
+    expect(r.meta.participantes.map(p => p.nome)).not.toContain('Pedro Lima')
   })
 })

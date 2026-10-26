@@ -1,4 +1,4 @@
-import { horaPorExtenso, listarOrientados, novoMarcadorRegex, renderAta, textoLivreParaPadrao, type MeetingMetadata, type Pessoa } from './ata-api'
+import { horaPorExtenso, listarOrientados, novoMarcadorRegex, renderAta, renderAtaTextoLivre, textoLivreParaPadrao, type MeetingMetadata, type Pessoa } from './ata-api'
 import type { AtaRecord } from './types'
 
 export type Marcador = {
@@ -102,20 +102,42 @@ export function preencherIguais(texto: string, m: Marcador, valor: string): stri
  */
 export function aplicarPresenca(ata: AtaRecord, lista: MeetingMetadata['participantes']) {
   const convocados = ata.convocados ?? ata.meta.participantes.map(chaveNome)
-  const orientados = listarOrientados(ata.meta).map(chaveNome)
-  // responsáveis e alunos entram à mão em cada ata (não vêm do cadastro): nunca somem da lista;
-  // os orientados ficam em meta.orientados (ou meta.orientado, nas atas antigas) e não podem repetir como participante
+  // Só o formato legado separa os orientados em meta.orientados/orientado e exige tirá-los dos participantes.
+  // No cadastro v2 eles são participantes com recebeOrientacao: ficam (listarOrientados(meta) os junta sozinho).
+  const orientados = listarOrientados({ orientados: ata.meta.orientados, orientado: ata.meta.orientado }).map(chaveNome)
+  // responsáveis e alunos entram à mão em cada ata (não vêm do cadastro): nunca somem da lista
   const participantes = lista.filter(
-    p => !orientados.includes(chaveNome(p)) && (p.presente || convocados.includes(chaveNome(p)) || (p.categoria && p.categoria !== 'funcionario')),
+    p => !orientados.includes(chaveNome(p)) && (p.presente || p.recebeOrientacao || convocados.includes(chaveNome(p)) || (p.categoria && p.categoria !== 'funcionario')),
   )
   const r = recalcular(ata, participantes)
   return { ...r, convocados }
 }
 
+const CORPO = 'CORPOSENTINELA'
+
+/**
+ * Ata sem `extraida` ("Usar como está"): o corpo é o miolo do texto renderizado, entre a abertura e o encerramento
+ * gerados por código. Acha o miolo comparando com uma renderização de corpo marcado, com a mesma presença de antes.
+ * null se o texto renderizado não bate (ex.: metadados mudaram), e então a ata fica como está.
+ */
+function corpoDoTextoLivre(ata: AtaRecord): string | null {
+  const [pre, pos] = renderAtaTextoLivre(ata.meta, CORPO).texto.split(CORPO)
+  const texto = ata.renderizada!.texto
+  if (pos === undefined || !texto.startsWith(pre) || !texto.endsWith(pos) || texto.length < pre.length + pos.length) return null
+  return texto.slice(pre.length, texto.length - pos.length).trim()
+}
+
 function recalcular(ata: AtaRecord, participantes: MeetingMetadata['participantes']) {
   const meta = { ...ata.meta, participantes }
   const antigo = ata.renderizada!.texto
-  const renderizada = renderAta(meta, ata.extraida!, ata.transcript)
+  let renderizada
+  if (ata.extraida) renderizada = renderAta(meta, ata.extraida, ata.transcript)
+  else {
+    const corpo = corpoDoTextoLivre(ata)
+    // sem como separar o corpo: nada é inventado nem perdido, o texto segue como está
+    if (corpo === null) return { meta, renderizada: ata.renderizada!, texto: ata.textoEditado ?? antigo, textoPreservado: false }
+    renderizada = renderAtaTextoLivre(meta, corpo)
+  }
   const novo = renderizada.texto
   const editado = ata.textoEditado
   if (editado === undefined || editado === antigo) return { meta, renderizada, texto: novo, textoPreservado: true }
