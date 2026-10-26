@@ -1,5 +1,5 @@
 import type { AssuntosExtras } from './assuntos'
-import type { AtaExtraida, AtaRenderizada, MeetingMetadata, Pessoa, TranscriptSegment } from './ata-api'
+import type { AtaExtraida, AtaRenderizada, MeetingMetadata, Pessoa, TranscriptSegment, Anotacao, ModoRegistro, ResumoAta } from './ata-api'
 
 export const MODELOS = [
   { id: 'gemini-3.8-flash', nome: 'Gemini 3.8 Flash (padrão, melhor qualidade)' },
@@ -78,6 +78,13 @@ export type AtaRecord = {
   criadaEm: number
   atualizadaEm: number
   status: AtaStatus
+  modoRegistro?: ModoRegistro
+  anotacoes?: Anotacao[]
+  resumo?: ResumoAta
+  /** Estado editorial independente do processamento: sem data, é Rascunho; com data, Finalizada. */
+  finalizadaEm?: number
+  /** Datas em que uma ata finalizada foi reaberta para correção. */
+  reabertaEm?: number[]
   erro?: string
   meta: MeetingMetadata
   audioNome?: string

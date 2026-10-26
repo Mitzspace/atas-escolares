@@ -142,3 +142,8 @@ it('preserva palavras com hífen sem quebras internas nem mudança dos caractere
   expect(trechos.map(t => t.text).join('')).toBe(texto)
   expect(trechos.filter(t => t.noWrap).map(t => t.text)).toEqual(['Reuniram-se', 'coordenadora-geral', 'manifestou-se'])
 })
+
+it('PDF nasce rascunho com marca d’água e só a remove quando finalizada',()=>{
+ expect(montarDocumento(ata,ata.texto).watermark?.text).toBe('RASCUNHO – NÃO ASSINAR')
+ expect(montarDocumento(ata,ata.texto,undefined,undefined,true)).not.toHaveProperty('watermark')
+})

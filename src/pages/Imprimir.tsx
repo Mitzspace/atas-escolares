@@ -18,7 +18,7 @@ export default function Imprimir() {
     if (!ata?.renderizada || !settings) return
     let ativo = true
     setBlob(null); setErro('')
-    gerarPdfBlob(ata.renderizada, ata.textoEditado ?? ata.renderizada.texto, ata.meta, settings.logoEscola)
+    gerarPdfBlob(ata.renderizada, ata.textoEditado ?? ata.renderizada.texto, ata.meta, settings.logoEscola, !!ata.finalizadaEm)
       .then(pdf => { if (ativo) setBlob(pdf) }).catch(e => { if (ativo) setErro(`Não foi possível gerar o PDF: ${e.message}`) })
     return () => { ativo = false }
   }, [ata, settings?.logoEscola, !!settings])
@@ -30,6 +30,7 @@ export default function Imprimir() {
   return (
     <div className="space-y-4">
       <div><p className="eyebrow mb-2">DOCUMENTO FINAL</p><h1>Imprimir</h1><p className="mt-3 text-slate-600">Ata nº {ata.meta.numero}/{ata.meta.ano} · {ata.meta.escola}</p></div>
+      {!ata.finalizadaEm && <div role="status" className="card border-amber-300 bg-amber-50 text-amber-900"><b>Rascunho — não assinar.</b> Confira o conteúdo e finalize a ata na revisão para gerar o PDF sem marca d’água.<Link className="btn-secondary mt-3 w-full" to={`/ata/${id}/revisar`}>Revisar e finalizar</Link></div>}
       <div className="card text-center"><img src={settings?.logoEscola || LOGO_PADRAO_URL} alt="Logo da escola na impressão" className="mx-auto mb-3 h-24 w-24 object-contain" /><p className="font-document font-semibold">{ata.meta.escola}</p><p className="mt-2 text-sm text-slate-600">A logo aparece acima do nome da escola no PDF.</p></div>
       {erro && <div role="alert" className="card border-red-300 bg-red-50 text-red-800">{erro}</div>}
       {!blob && !erro && <p className="text-slate-500">Gerando o PDF…</p>}

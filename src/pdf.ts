@@ -137,7 +137,7 @@ function anexoDePresenca(ata: AtaRenderizada, meta: MeetingMetadata) {
   ]
 }
 
-export function montarDocumento(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata, logo?: string) {
+export function montarDocumento(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata, logo?: string, finalizada = false) {
   const anexo = meta && temAnexoDePresenca(meta)
   const responsaveis = new Set(responsaveisPresentes(meta).map(p => chaveNome(p.nome)))
   // com anexo, os responsáveis assinam só na lista; no corpo ficam os demais
@@ -147,6 +147,7 @@ export function montarDocumento(ata: AtaRenderizada, textoFinal: string, meta?: 
     pageMargins: [MARGENS.esq, MARGENS.topo, MARGENS.dir, MARGENS.base] as [number, number, number, number],
     defaultStyle: { font: 'Times', fontSize: TAMANHO, lineHeight: 1.4 },
     info: { title: ata.titulo },
+    ...(!finalizada ? { watermark: { text: 'RASCUNHO – NÃO ASSINAR', font: 'Times', color: '#64748b', opacity: 0.22, fontSize: 26, angle: 0 } } : {}),
     footer: (atual: number, total: number) => ({
       text: `Folha ${atual} de ${total}`, alignment: 'right' as const, fontSize: 10,
       margin: [MARGENS.esq, 24, MARGENS.dir, 0] as [number, number, number, number],
@@ -169,14 +170,14 @@ async function carregarPdfMake() {
   return pdfMake
 }
 
-export async function gerarPdfBytes(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata, logo?: string): Promise<Uint8Array> {
+export async function gerarPdfBytes(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata, logo?: string, finalizada = false): Promise<Uint8Array> {
   const pdfMake = await carregarPdfMake()
-  const buf = await pdfMake.createPdf(montarDocumento(ata, textoFinal, meta, logo) as never).getBuffer()
+  const buf = await pdfMake.createPdf(montarDocumento(ata, textoFinal, meta, logo, finalizada) as never).getBuffer()
   return new Uint8Array(buf)
 }
 
-export async function gerarPdfBlob(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata, logo?: string): Promise<Blob> {
-  return new Blob([(await gerarPdfBytes(ata, textoFinal, meta, logo)) as BlobPart], { type: 'application/pdf' })
+export async function gerarPdfBlob(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata, logo?: string, finalizada = false): Promise<Blob> {
+  return new Blob([(await gerarPdfBytes(ata, textoFinal, meta, logo, finalizada)) as BlobPart], { type: 'application/pdf' })
 }
 
 export function nomeArquivo(ata: AtaRenderizada): string {

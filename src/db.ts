@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
+import { listarMarcadores } from './revisao'
 import { SETTINGS_PADRAO, type AtaRecord, type Settings, type BackupAtas, type OpcoesRestauracao } from './types'
 
 type SettingsRow = { id: 'main'; value: Settings }
@@ -49,7 +50,36 @@ export async function saveAta(ata: AtaRecord) {
   await db.atas.put({ ...ata, atualizadaEm: Date.now() })
 }
 export async function patchAta(id: string, patch: Partial<AtaRecord>) {
-  await db.atas.update(id, { ...patch, atualizadaEm: Date.now() })
+  await db.transaction('rw', db.atas, async () => {
+    if ((await db.atas.get(id))?.finalizadaEm) throw new Error('Esta ata está finalizada. Reabra para correção antes de editar.')
+    await db.atas.update(id, { ...patch, atualizadaEm: Date.now() })
+  })
+}
+
+export async function finalizarAta(id: string, texto: string, revisada: boolean) {
+  if (!revisada) throw new Error('Confirme que revisou a ata antes de finalizar.')
+  const pendencias = listarMarcadores(texto)
+  if (pendencias.length) throw new Error('Complete ou confirme os trechos pendentes antes de finalizar.')
+  if (!texto.trim()) throw new Error('A ata não pode ficar sem texto.')
+  return db.transaction('rw', db.atas, async () => {
+    const ata = await db.atas.get(id)
+    if (!ata?.renderizada) throw new Error('Ata não encontrada.')
+    if (ata.finalizadaEm) return ata
+    const final = { ...ata, textoEditado: texto, finalizadaEm: Date.now(), atualizadaEm: Date.now() }
+    await db.atas.put(final)
+    return final
+  })
+}
+
+export async function reabrirAta(id: string) {
+  return db.transaction('rw', db.atas, async () => {
+    const ata = await db.atas.get(id)
+    if (!ata) throw new Error('Ata não encontrada.')
+    if (!ata.finalizadaEm) return ata
+    const aberta = { ...ata, finalizadaEm: undefined, reabertaEm: [...(ata.reabertaEm ?? []), Date.now()], atualizadaEm: Date.now() }
+    await db.atas.put(aberta)
+    return aberta
+  })
 }
 export const deleteAta = async (id: string) => {
   await db.transaction('rw', db.atas, db.audios, async () => {
@@ -124,8 +154,12 @@ const regraAta = objeto({
   provedorRedacao: { valores: ['gemini', 'groq'] }, modeloRedacao: 'texto', extraida,
   renderizada: objeto({ titulo: 'texto', cabecalho: lista('texto'), texto: 'texto', assinaturas: lista(pessoa), pendencias: lista('texto') }),
   textoEditado: 'texto', convocados: lista('texto'),
+  modoRegistro: { valores: ['audio', 'digitar', 'audio_digitar'] },
+  anotacoes: lista(objeto({ texto: 'texto', tempo: 'texto' }, ['tempo'])),
+  resumo: objeto({ assuntos: lista('texto'), decisoes: lista('texto'), encaminhamentos: lista('texto') }),
+  finalizadaEm: 'numero', reabertaEm: lista('numero'),
 }, ['erro', 'audioNome', 'transcript', 'provedorTranscricao', 'modeloTranscricao', 'provedorRedacao', 'modeloRedacao',
-  'extraida', 'renderizada', 'textoEditado', 'convocados'])
+  'extraida', 'renderizada', 'textoEditado', 'convocados', 'modoRegistro', 'anotacoes', 'resumo', 'finalizadaEm', 'reabertaEm'])
 const camposSettings: Record<string, Regra> = {
   escola: 'texto', logoEscola: 'texto', rede: 'texto', municipioUf: 'texto', local: 'texto', pessoas: lista(pessoa), glossario: 'texto',
   assuntosExtras: objeto({ pedagogica: lista('texto'), pais: lista('texto'),

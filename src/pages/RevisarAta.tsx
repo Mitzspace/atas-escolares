@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { listarOrientados, validateAta } from '../ata-api'
-import { patchAta } from '../db'
+import { finalizarAta, patchAta, reabrirAta } from '../db'
 import { useAta, useDebouncedEffect, useSettings } from '../hooks'
 import { rotuloDoParticipante } from '../pessoas'
 import { aplicarPresenca, listaDePresenca, mesmaPessoa, listarMarcadores, preencherMarcador, type Marcador } from '../revisao'
@@ -29,6 +29,9 @@ export default function RevisarAta() {
   const [texto, setTexto] = useState<string | null>(null)
   const [salvo, setSalvo] = useState(true)
   const [textoDesatualizado, setTextoDesatualizado] = useState(false)
+  const [revisada, setRevisada] = useState(false)
+  const [ocupado, setOcupado] = useState(false)
+  const [erro, setErro] = useState('')
   const area = useRef<HTMLTextAreaElement>(null)
   const cursor = useRef(0)
 
@@ -36,8 +39,8 @@ export default function RevisarAta() {
     if (ata?.renderizada) setTexto(ata.textoEditado ?? ata.renderizada.texto)
   }, [ata])
   useDebouncedEffect(() => {
-    if (texto !== null && !salvo) patchAta(id, { textoEditado: texto }).then(() => setSalvo(true))
-  }, [texto])
+    if (texto !== null && !salvo && !ata?.finalizadaEm) patchAta(id, { textoEditado: texto }).then(() => setSalvo(true)).catch(e => setErro(e.message))
+  }, [texto, ata?.finalizadaEm])
 
   const problemas = useMemo(
     () => (ata?.renderizada && texto !== null ? validateAta({ ...ata.renderizada, texto }) : []),
@@ -68,6 +71,8 @@ export default function RevisarAta() {
 
   /** grava no banco e na tela; o efeito acima atualiza o textarea a partir de `ata` */
   async function aplicar(patch: Partial<AtaRecord>) {
+    if (atual.finalizadaEm) return
+    setRevisada(false)
     // Checkbox controlado precisa do novo estado no próprio evento, antes do IndexedDB.
     setAta(a => (a ? { ...a, ...patch } : a))
     await patchAta(id, patch)
@@ -103,11 +108,16 @@ export default function RevisarAta() {
   }
 
   const ks = chaves(marcadores)
+  const finalizada = !!atual.finalizadaEm
 
   return (
     <div className="space-y-5">
       <div><p className="eyebrow mb-2">REVISÃO DO DOCUMENTO</p><h1 className="break-words">{atual.renderizada!.titulo}</h1></div>
       <div className="text-sm text-slate-600">{atual.renderizada!.cabecalho.filter(Boolean).join(' · ')}</div>
+      <p className={`rounded-xl border p-4 font-semibold ${finalizada ? 'border-green-300 bg-green-50 text-green-900' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>
+        {finalizada ? `Finalizada em ${new Date(atual.finalizadaEm!).toLocaleString('pt-BR')}` : 'Rascunho — revise antes de assinar.'}
+      </p>
+      {erro && <p role="alert" className="card text-red-800">{erro}</p>}
 
       {atual.provedorRedacao && <p className="text-sm text-slate-600">Redação: {atual.provedorRedacao === 'groq' ? 'Groq' : 'Gemini'} · {atual.modeloRedacao}</p>}
       <AvisoModeloEconomico modelo={atual.modeloRedacao} />
@@ -135,7 +145,7 @@ export default function RevisarAta() {
           {lista.map((p, i) => (
             <li key={`${p.nome}|${i}`}>
               <label className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border p-4 transition-colors ${p.presente ? 'border-blue-200 bg-blue-50/50' : 'border-rule bg-slate-50'}`}>
-                <input type="checkbox" className="size-6 shrink-0 accent-blue-900" checked={p.presente} onChange={() => alternarPresenca(i)} />
+                <input type="checkbox" className="size-6 shrink-0 accent-blue-900" checked={p.presente} disabled={finalizada || ocupado} onChange={() => alternarPresenca(i)} />
                 <span className="min-w-0 break-words"><b className="block text-ink">{p.nome}</b><span className="mt-1 block text-slate-600">{rotuloDoParticipante(p)}</span></span>
               </label>
             </li>
@@ -152,7 +162,7 @@ export default function RevisarAta() {
         )}
       </section>
 
-      {marcadores.length > 0 && (
+      {!finalizada && marcadores.length > 0 && (
         <section className="space-y-4" aria-label="Completar pendências">
           <h2 className="font-semibold">Completar pendências ({marcadores.length})</h2>
           {marcadores.map((m, i) => (
@@ -185,7 +195,7 @@ export default function RevisarAta() {
         )}
         <textarea
           id="texto-ata" ref={area} className="field font-serif leading-relaxed" rows={18}
-          value={texto} onChange={e => { setTexto(e.target.value); setSalvo(false) }}
+          value={texto} readOnly={finalizada || ocupado} onChange={e => { setTexto(e.target.value); setSalvo(false); setRevisada(false) }}
         />
         <p className="mt-1 text-sm text-slate-600" aria-live="polite">{salvo ? 'Salvo.' : 'Salvando…'}</p>
       </div>
@@ -197,12 +207,31 @@ export default function RevisarAta() {
         </ul>
       </section>
 
+      <section className="card space-y-4" aria-label="Finalização da ata">
+        <h2>{finalizada ? 'Documento finalizado' : 'Conferência final'}</h2>
+        {finalizada ? <><p>Esta ata está somente para leitura. Para alterar o conteúdo, reabra para correção. A data da reabertura ficará registrada.</p>
+          <button className="btn-secondary w-full" disabled={ocupado} onClick={async () => {
+            setOcupado(true); setErro('')
+            try { setAta(await reabrirAta(id)); setRevisada(false) } catch (e) { setErro((e as Error).message) }
+            finally { setOcupado(false) }
+          }}>Reabrir para correção</button></> : <>
+          {marcadores.length > 0 && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900"><p>Antes de finalizar, complete ou confirme estes trechos:</p><ul className="mt-2 list-disc pl-5">{marcadores.map((m, i) => <li key={i}>{m.descricao}</li>)}</ul></div>}
+          <label className="flex min-h-12 items-center gap-3"><input type="checkbox" className="size-6 shrink-0" checked={revisada} disabled={ocupado} onChange={e => setRevisada(e.target.checked)} />Revisei a ata e confirmo que está correta</label>
+          <button className="btn-primary w-full" disabled={ocupado || !revisada || !!marcadores.length} onClick={async () => {
+            setOcupado(true); setErro('')
+            try { setAta(await finalizarAta(id, texto, revisada)); setSalvo(true) } catch (e) { setErro((e as Error).message) }
+            finally { setOcupado(false) }
+          }}>Finalizar ata</button>
+        </>}
+        {!!atual.reabertaEm?.length && <p className="text-sm text-slate-600">Reaberta para correção em: {atual.reabertaEm.map(d => new Date(d).toLocaleString('pt-BR')).join('; ')}.</p>}
+      </section>
+
       <div className="action-bar">
         <div className="mx-auto flex max-w-3xl gap-2 sm:px-8">
           <Link to={`/ata/${id}/transcricao`} className="btn-secondary px-3 sm:px-5">← Transcrição</Link>
           <button
             className="btn-primary flex-1"
-            onClick={async () => { await patchAta(id, { textoEditado: texto }); nav(`/ata/${id}/imprimir`) }}
+            onClick={async () => { if (!finalizada) await patchAta(id, { textoEditado: texto }); nav(`/ata/${id}/imprimir`) }}
           >Imprimir / PDF</button>
         </div>
       </div>

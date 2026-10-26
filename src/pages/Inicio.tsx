@@ -63,7 +63,7 @@ export default function Inicio() {
                   <p className="mt-2 inline-flex rounded-lg border border-blue-100 bg-blue-50 px-3 py-1 font-medium text-blue-900">{TIPOS_ATA[a.meta.tipo ?? 'pedagogica']?.nome ?? 'Reunião pedagógica'}</p>
                   <p className="mt-2 text-base text-slate-600">{a.meta.data.split('-').reverse().join('/')} · {a.meta.escola}</p>
                 </div>
-                <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${COR[a.status]}`}>{ROTULO[a.status]}</span>
+                <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${COR[a.status]}`}>{a.finalizadaEm ? 'Finalizada' : a.status === 'ata' ? 'Rascunho' : ROTULO[a.status]}</span>
               </div>
               {a.erro && <p className="mt-2 text-sm text-red-700">{a.erro}</p>}
               <div className="mt-5 flex flex-wrap gap-2 border-t border-rule pt-4">

@@ -14,13 +14,14 @@ export default function RevisarTranscricao() {
 
   useEffect(() => { if (ata?.transcript) setSegs(ata.transcript) }, [ata])
   useDebouncedEffect(() => {
-    if (segs && !salvo) patchAta(id, { transcript: segs }).then(() => setSalvo(true))
-  }, [segs])
+    if (segs && !salvo && !ata?.finalizadaEm) patchAta(id, { transcript: segs }).then(() => setSalvo(true))
+  }, [segs, ata?.finalizadaEm])
 
   const falantes = useMemo(() => [...new Set((segs ?? []).map(s => s.speaker))], [segs])
 
   if (ata === undefined) return <p className="text-slate-500">Carregando…</p>
   if (!ata || !segs) return <p>Transcrição não encontrada. <Link to="/" className="underline">Voltar</Link></p>
+  if (ata.finalizadaEm) return <div className="space-y-4"><h1>Transcrição — somente leitura</h1><p>A ata foi finalizada. Reabra para correção antes de alterar a transcrição.</p><ul className="space-y-3">{segs.map((s, i) => <li className="card" key={i}><b>{s.speaker} · {s.start}–{s.end}</b><p>{s.text}</p></li>)}</ul><Link className="btn-secondary" to={`/ata/${id}/revisar`}>Voltar à ata</Link></div>
 
   const mudar = (novo: TranscriptSegment[]) => { setSegs(novo); setSalvo(false) }
   const renomear = (de: string, para: string) => mudar(segs.map(s => (s.speaker === de ? { ...s, speaker: para } : s)))
