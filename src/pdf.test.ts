@@ -134,3 +134,11 @@ describe('identidade visual no PDF', () => {
     expect(String.fromCharCode(...(await gerarPdfBytes(ata, ata.texto, metaBase, logo)).slice(0, 5))).toBe('%PDF-')
   })
 })
+
+import { preservarHifens } from './pdf'
+it('preserva palavras com hífen sem quebras internas nem mudança dos caracteres', () => {
+  const texto = 'Reuniram-se os presentes. A coordenadora-geral manifestou-se sobre a pauta.'
+  const trechos = preservarHifens(texto)
+  expect(trechos.map(t => t.text).join('')).toBe(texto)
+  expect(trechos.filter(t => t.noWrap).map(t => t.text)).toEqual(['Reuniram-se', 'coordenadora-geral', 'manifestou-se'])
+})
