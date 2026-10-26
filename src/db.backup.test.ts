@@ -13,7 +13,7 @@ const ata = (id = 'ata-1', atualizadaEm = 100): AtaRecord => ({
   id, criadaEm: 50, atualizadaEm, status: 'ata', meta,
   transcript: [{ speaker: 'Clara', start: '00:00', end: '00:10', text: 'Reunião aberta.' }],
   extraida: { itens: [{ pauta: 1, relato: 'A reunião foi aberta.' }], deliberacoes: [], encaminhamentos: [], pendencias: [] },
-  renderizada: { titulo: 'Ata', texto: 'Texto original.', cabecalho: ['Escola'], assinaturas: [meta.presidente], pendencias: [] },
+  renderizada: { titulo: 'Ata', texto: 'Texto original.', cabecalho: ['Escola'], assinaturas: [meta.presidente!], pendencias: [] },
   textoEditado: 'Texto revisado.', convocados: ['clara'],
   provedorTranscricao: 'groq', modeloTranscricao: 'whisper-large-v3', provedorRedacao: 'gemini', modeloRedacao: 'gemini-3.8-flash',
 })
@@ -30,14 +30,14 @@ afterEach(() => { vi.restoreAllMocks() })
 describe('backup completo sem áudios', () => {
   it('exporta todas as atas e configurações, sem chaves por padrão nem áudios ou pedaços', async () => {
     await saveSettings({ ...SETTINGS_PADRAO, escola: 'Escola teste', apiKey: 'segredo-gemini', groqApiKey: 'segredo-groq',
-      pessoas: [meta.presidente], assuntosExtras: { pedagogica: ['Projeto próprio'] }, ultimoBackupEm: 123 })
+      pessoas: [meta.presidente!], assuntosExtras: { pedagogica: ['Projeto próprio'] }, ultimoBackupEm: 123 })
     await db.atas.bulkPut([ata(), ata('ata-2')])
     await db.audios.put({ id: 'ata-1', blob: new Blob(['audio secreto']), nome: 'audio.mp3', mimeType: 'audio/mp3' })
     await db.sessoesGravacao.put({ id: 's', mimeType: 'audio/webm', ext: 'webm', iniciadaEm: 1, duracaoMs: 10 })
     await db.pedacosGravacao.put({ sessaoId: 's', seq: 1, blob: new Blob(['pedaço secreto']) })
     const b = await criarBackup()
     expect(b).toMatchObject({ formato: 'atas-escolares', versao: 1, atas: [ata(), ata('ata-2')], configuracoes: {
-      escola: 'Escola teste', pessoas: [meta.presidente], assuntosExtras: { pedagogica: ['Projeto próprio'] },
+      escola: 'Escola teste', pessoas: [meta.presidente!], assuntosExtras: { pedagogica: ['Projeto próprio'] },
     } })
     expect(b.configuracoes).not.toHaveProperty('apiKey')
     expect(b.configuracoes).not.toHaveProperty('groqApiKey')

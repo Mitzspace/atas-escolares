@@ -137,10 +137,11 @@ const chaveNome = (p: Pessoa) => p.nome.normalize('NFD').replace(/\p{M}/gu, '').
 export function listaDePresenca(
   participantes: MeetingMetadata['participantes'],
   cadastro: Pessoa[],
-  excluir: Pessoa[] = [],
+  /** quem não entra na lista (ex.: responsável pela ata); `undefined` é ignorado */
+  excluir: (Pessoa | undefined)[] = [],
   orientado?: Pessoa | Pessoa[],
 ) {
-  const fora = new Set([...excluir, ...(Array.isArray(orientado) ? orientado : orientado ? [orientado] : [])].map(chaveNome))
+  const fora = new Set([...excluir.filter((p): p is Pessoa => !!p), ...(Array.isArray(orientado) ? orientado : orientado ? [orientado] : [])].map(chaveNome))
   const lista = participantes.filter(p => !fora.has(chaveNome(p)))
   const vistos = new Set(lista.map(chaveNome))
   for (const p of cadastro) {
@@ -152,5 +153,5 @@ export function listaDePresenca(
   return lista
 }
 
-/** Presidente e secretário(a) são a mesma pessoa? */
+/** Duas pessoas têm o mesmo nome (ignora caixa, acentos e espaços)? */
 export const mesmaPessoa = (a: Pessoa, b: Pessoa) => chaveNome(a) === chaveNome(b)

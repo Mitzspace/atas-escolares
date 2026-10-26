@@ -58,7 +58,7 @@ describe('pais: anexo de presença', () => {
   })
   it('com anexo, o corpo não repete os responsáveis e a tabela lista todos', () => {
     const meta = { ...metaBase, participantes: resp(9) }
-    const ata = { ...ata0(), assinaturas: [metaBase.presidente, ...resp(9)] }
+    const ata = { ...ata0(), assinaturas: [metaBase.presidente!, ...resp(9)] }
     const doc = montarDocumento(ata, ata.texto, meta)
     const texto = JSON.stringify(doc.content)
     expect(texto).toContain('LISTA DE PRESENÇA')
@@ -73,7 +73,7 @@ describe('pais: anexo de presença', () => {
   })
   it('gera PDF válido com anexo', async () => {
     const meta = { ...metaBase, participantes: resp(12) }
-    const bytes = await gerarPdfBytes({ ...ata0(), assinaturas: [metaBase.presidente, ...resp(12)] }, 'Texto da ata.', meta)
+    const bytes = await gerarPdfBytes({ ...ata0(), assinaturas: [metaBase.presidente!, ...resp(12)] }, 'Texto da ata.', meta)
     expect(String.fromCharCode(...bytes.slice(0, 5))).toBe('%PDF-')
   })
 })

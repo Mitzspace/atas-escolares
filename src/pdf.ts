@@ -97,7 +97,7 @@ function assinatura(p: Pessoa, cargo = p.cargo) {
     stack: [
       { canvas: [{ type: 'line' as const, x1: 0, y1: 0, x2: 250, y2: 0, lineWidth: 0.6 }] },
       { text: p.nome || ' ', fontSize: 11, margin: [0, 2, 0, 0] },
-      { text: cargo, fontSize: 10, italics: true },
+      ...(cargo.trim() ? [{ text: cargo, fontSize: 10, italics: true }] : []),
     ],
   }
 }

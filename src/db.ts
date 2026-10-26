@@ -133,13 +133,13 @@ const lista = (regra: Regra): Regra => ({ lista: regra })
 const objeto = (campos: Record<string, Regra>, opcionais: readonly string[] = []): Regra => ({ campos, opcionais })
 const pessoa = objeto({ nome: 'texto', cargo: 'texto' })
 const participante = objeto({ nome: 'texto', cargo: 'texto', presente: 'booleano',
-  categoria: { valores: ['funcionario', 'responsavel', 'aluno'] }, vinculo: 'texto' }, ['categoria', 'vinculo'])
+  categoria: { valores: ['funcionario', 'responsavel', 'aluno'] }, vinculo: 'texto', recebeOrientacao: 'booleano' }, ['categoria', 'vinculo', 'recebeOrientacao'])
 const metadados = objeto({
-  escola: 'texto', rede: 'texto', municipioUf: 'texto', tipo: { valores: ['pedagogica', 'pais', 'orientacao'] },
+  escola: 'texto', rede: 'texto', municipioUf: 'texto', tipo: { valores: ['pedagogica', 'pais', 'orientacao', 'outra'] }, tipoReuniao: 'texto',
   ordinaria: 'booleano', numero: 'numero', ano: 'numero', data: 'texto', horaInicio: 'texto', horaFim: 'texto',
-  local: 'texto', presidente: pessoa, secretario: pessoa, participantes: lista(participante),
+  local: 'texto', responsavel: pessoa, presidente: pessoa, secretario: pessoa, participantes: lista(participante),
   orientados: lista(participante), orientado: participante, pauta: lista('texto'), anonimizarAlunos: 'booleano', glossario: lista('texto'),
-}, ['tipo', 'ordinaria', 'horaFim', 'orientados', 'orientado', 'glossario'])
+}, ['tipo', 'tipoReuniao', 'ordinaria', 'horaFim', 'responsavel', 'presidente', 'secretario', 'orientados', 'orientado', 'glossario'])
 const extraida = objeto({
   itens: lista(objeto({ pauta: 'numero', relato: 'texto' })),
   deliberacoes: lista(objeto({ texto: 'texto', votacao: 'texto' }, ['votacao'])),
@@ -219,7 +219,7 @@ export function validarBackup(entrada: unknown): BackupAtas {
     ids.add(ata.id)
     // Antes da inclusão de outros tipos, todas as atas eram pedagógicas.
     ata.meta.tipo ??= 'pedagogica'
-    ata.meta.ordinaria ??= true
+    if (!ata.meta.responsavel) ata.meta.ordinaria ??= true
   }
   return { formato: 'atas-escolares', versao: 1, criadoEm: b.criadoEm, configuracoes, atas }
 }
