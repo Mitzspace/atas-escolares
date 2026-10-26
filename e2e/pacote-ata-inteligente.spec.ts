@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { spawnSync } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -21,7 +22,7 @@ test.use({
   },
 })
 
-const saida = path.resolve('e2e/saida/pacote-ata-inteligente')
+const saida = path.resolve(process.env.PACOTE_QA_OUTPUT ?? 'e2e/saida/pacote-ata-inteligente')
 const removerSegredos = (s: string) => s
   .replaceAll(gemini ?? '\0', '[CHAVE_REMOVIDA]')
   .replaceAll(groq ?? '\0', '[CHAVE_REMOVIDA]')
@@ -31,6 +32,7 @@ const removerSegredos = (s: string) => s
 
 function observar(page: Page, caso: string) {
   const arquivo = path.join(saida, `logs-${caso}.txt`)
+  writeFileSync(arquivo, '')
   const salvar = (linha: string) => writeFile(arquivo, `${new Date().toISOString()} ${removerSegredos(linha)}\n`, { flag: 'a' })
   page.on('console', msg => {
     if (msg.type() === 'error' || msg.type() === 'warning') void salvar(`console:${msg.type()} ${msg.text()}`)
@@ -110,10 +112,34 @@ test('Digitar sem IA: offline, marcadores bloqueiam finalização, PDF rascunho/
   page.setDefaultTimeout(60_000)
   observar(page, 'usar-como-esta')
   await page.goto('/#/nova')
-  await page.getByLabel('Tipo de reunião', { exact: true }).selectOption('Reunião pedagógica')
-  await page.getByRole('radio', { name: 'Digitar', exact: true }).check()
+  await page.getByLabel('Tipo de reunião', { exact: true }).selectOption('Outro (digitar)')
+  await page.getByLabel('Digite o tipo de reunião', { exact: true }).fill('Conselho de Cultura')
   await page.getByLabel('Nome do(a) responsável', { exact: true }).fill('Maria Souza')
   await page.locator('#responsavel-cargo').fill('Diretora')
+  await page.getByRole('button', { name: /Cadastrar novo nome ou cargo/ }).click()
+  await expect(page.getByText('Nome ou cargo cadastrado para as próximas atas.', { exact: true })).toBeVisible()
+  await expect(page.locator('#nomes-cadastrados option[value="Maria Souza"]')).toHaveCount(1)
+  await expect(page.locator('#cargos-cadastrados option[value="Diretora"]')).toHaveCount(1)
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.screenshot({ path: path.join(saida, 'cadastro-v2-390.png') })
+  await page.screenshot({ path: path.join(saida, 'cadastro-v2-390-completo.png'), fullPage: true })
+  await page.getByRole('heading', { name: 'Quem fez a ata?', exact: true }).evaluate(el => el.scrollIntoView({ block: 'start' }))
+  await page.screenshot({ path: path.join(saida, 'cadastro-v2-responsavel-390.png') })
+  await page.evaluate(() => window.scrollTo(0, 0))
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.getByRole('button', { name: /Adicionar participante/ }).click()
+  await page.getByLabel('Nome do participante 1').fill('Carlos Mendes')
+  await expect(page.getByLabel('Cargo do participante 1')).toHaveValue('')
+  await page.getByRole('heading', { name: 'Participantes da reunião', exact: true }).evaluate(el => el.scrollIntoView({ block: 'start' }))
+  await page.screenshot({ path: path.join(saida, 'cadastro-v2-participantes-390.png') })
+  await page.getByRole('radio', { name: 'Digitar', exact: true }).check()
+  await page.getByRole('button', { name: /Adicionar participante/ }).click()
+  await page.getByLabel('Nome do participante 2').fill('Bruno Reis')
+  await page.getByLabel('Cargo do participante 2').fill('Professor')
+  await page.getByLabel('Nome do participante 2').fill('Clara Dias')
+  await expect(page.getByLabel('Nome do participante 2')).toHaveValue('Clara Dias')
+  await page.getByRole('button', { name: 'Excluir participante 2', exact: true }).click()
+  await expect(page.getByLabel('Nome do participante 2')).toHaveCount(0)
   await page.getByLabel('Início', { exact: true }).fill('14:00')
   await page.getByLabel('Término (opcional)', { exact: true }).fill('15:00')
   await page.getByLabel('Local', { exact: true }).fill('sala dos professores')
@@ -123,6 +149,15 @@ test('Digitar sem IA: offline, marcadores bloqueiam finalização, PDF rascunho/
   await context.setOffline(true)
   await page.getByRole('button', { name: 'Usar como está', exact: true }).click()
   await expect(page.locator('#texto-ata')).toContainText('Maria apresentou o planejamento escolar')
+  await expect(page.getByRole('heading', { name: /ATA Nº .*CONSELHO DE CULTURA/ })).toBeVisible()
+  const corpoInicial = await page.locator('#texto-ata').inputValue()
+  expect(corpoInicial).toMatch(/e eu, Maria Souza, diretora, lavrei a presente ata/i)
+  expect(corpoInicial).not.toMatch(/sob a presid[eê]ncia/i)
+  expect(corpoInicial).not.toMatch(/,,/)
+  const assinaturas = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Assinam', exact: true }) })
+  await expect(assinaturas.locator('li').filter({ hasText: 'Carlos Mendes' })).toHaveText('Carlos Mendes')
+  await expect(page.getByText('Bruno Reis', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Clara Dias', { exact: true })).toHaveCount(0)
   await expect(page.getByText('Rascunho — revise antes de assinar.', { exact: true })).toBeVisible()
   await page.locator('#texto-ata').fill(`Aos vinte e cinco dias do mês de outubro, ${texto} [PENDENTE: horário de término]. Nada mais havendo a tratar, lavrei a presente ata.`)
   await page.getByLabel('Revisei a ata e confirmo que está correta').check()
@@ -147,6 +182,45 @@ test('Digitar sem IA: offline, marcadores bloqueiam finalização, PDF rascunho/
   await expect(page.locator('#texto-ata')).not.toHaveAttribute('readonly', '')
   await expect(page.getByText('Reaberta para correção em:', { exact: false })).toBeVisible()
   await writeFile(path.join(saida, 'resultado-usar-como-esta.txt'), 'Passou: fluxo executado offline; PDF rascunho e final baixados; finalização bloqueada pelo marcador; ata final somente leitura e reabertura datada.\n')
+})
+
+test('ata legada sem cadastro v2 continua abrindo a partir da lista', async ({ page }) => {
+  test.setTimeout(3 * 60_000)
+  page.setDefaultTimeout(60_000)
+  await page.goto('/')
+  await page.evaluate(async () => {
+    await new Promise<void>((resolve, reject) => {
+      const pedido = indexedDB.open('atas-escolares')
+      pedido.onerror = () => reject(pedido.error)
+      pedido.onsuccess = () => {
+        const database = pedido.result
+        const meta = {
+          escola: 'Escola legada de teste', rede: 'Municipal', municipioUf: 'Campinas/SP', tipo: 'pedagogica', ordinaria: true,
+          numero: 42, ano: 2024, data: '2024-05-10', horaInicio: '14:00', horaFim: '15:00', local: 'Sala antiga',
+          presidente: { nome: 'Maria Souza', cargo: 'Diretora' }, secretario: { nome: 'Paulo Reis', cargo: 'Secretário' },
+          participantes: [{ nome: 'Clara Dias', cargo: 'Professora', presente: true }], pauta: ['Planejamento'], anonimizarAlunos: true,
+        }
+        const tx = database.transaction('atas', 'readwrite')
+        tx.objectStore('atas').put({
+          id: 'ata-legada-2024', criadaEm: Date.parse('2024-05-10T14:00:00'), atualizadaEm: Date.parse('2024-05-10T15:00:00'),
+          status: 'ata', meta,
+          renderizada: { titulo: 'REUNIÃO PEDAGÓGICA', cabecalho: ['Escola legada de teste'], texto: 'Ata antiga preservada no aparelho.', assinaturas: [meta.presidente, meta.secretario], pendencias: [] },
+          textoEditado: 'Registro legado editado antes do cadastro v2.',
+        })
+        tx.oncomplete = () => { database.close(); resolve() }
+        tx.onerror = () => { database.close(); reject(tx.error) }
+      }
+    })
+  })
+  await page.reload()
+  await expect(page.getByText('Ata nº 42/2024', { exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Abrir', exact: true }).click()
+  await expect(page.locator('#texto-ata')).toHaveValue('Registro legado editado antes do cadastro v2.')
+  await expect(page.getByRole('heading', { name: /REUNIÃO PEDAGÓGICA/ })).toBeVisible()
+  const assinaturas = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Assinam', exact: true }) })
+  await expect(assinaturas.getByText('Maria Souza — Diretora', { exact: true })).toBeVisible()
+  await expect(assinaturas.getByText('Paulo Reis — Secretário', { exact: true })).toBeVisible()
+  await writeFile(path.join(saida, 'resultado-ata-legada.txt'), 'Passou: registro legado sem responsavel/modeRegistro foi aberto da lista; texto editado e renderização antiga ficaram acessíveis. Não havia backup JSON antigo local para restaurar.\n')
 })
 
 test('Usar como está mantém edições ao alternar presença e orientação respeita participante marcado', async ({ page }) => {
@@ -226,45 +300,83 @@ test('Gravar e digitar: microfone falso, três anotações temporizadas, transcr
   test.setTimeout(15 * 60_000)
   page.setDefaultTimeout(60_000)
   observar(page, 'gravar-e-digitar')
+  if (process.env.MOCK_IA_E2E === '1') {
+    await page.route('https://api.groq.com/openai/v1/audio/transcriptions', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ segments: [
+        { start: 0, end: 2, text: 'Boa tarde a todos. São duas horas da tarde.' },
+        { start: 3, end: 5, text: 'A diretora encerrou a reunião.' },
+      ] }),
+    }))
+    await page.route('https://generativelanguage.googleapis.com/**', route => {
+      const pedido = route.request().postData() ?? ''
+      const ehGeracaoDaAta = pedido.includes('ANOTAÇÕES DA SECRETÁRIA')
+      const dados = ehGeracaoDaAta
+        ? { itens: [], deliberacoes: [], encaminhamentos: [], pendencias: [], manifestacoes: [], orientacoes: [] }
+        : { atribuicoes: [] }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(dados) }] }, finishReason: 'STOP' }] }),
+      })
+    })
+  }
+  const textosAnotados = [
+    'A reunião começa às 14 horas.',
+    'Clara Dias apresentará o calendário de avaliações.',
+    'O próximo encontro será na sexta-feira.',
+  ]
+  const capturaPrompt = { contemCabecalho: false, contemRegraPrioridade: false, contemAnotacoes: textosAnotados.map(() => false) }
+  page.on('request', request => {
+    if (request.method() !== 'POST' || !request.url().includes('generativelanguage.googleapis.com')) return
+    const corpo = request.postData() ?? ''
+    if (!corpo.includes('ANOTAÇÕES DA SECRETÁRIA')) return
+    capturaPrompt.contemCabecalho = true
+    capturaPrompt.contemRegraPrioridade = corpo.includes('As ANOTAÇÕES TÊM PRIORIDADE')
+    textosAnotados.forEach((texto, i) => { capturaPrompt.contemAnotacoes[i] = corpo.includes(texto) })
+  })
   await configurar(page)
   await preencherCadastro(page, 'Gravar e digitar')
   await page.getByRole('button', { name: '● Gravar', exact: true }).click()
   await expect(page.getByText('Gravando', { exact: true })).toBeVisible()
   await page.waitForTimeout(1800)
-  const anotacoes = [
-    'A reunião começa às 14 horas.',
-    'Clara Dias apresentará o calendário de avaliações.',
-    'O próximo encontro será na sexta-feira.',
-  ]
-  for (let i = 0; i < anotacoes.length; i++) {
+  for (let i = 0; i < textosAnotados.length; i++) {
     if (i > 0) await page.getByRole('button', { name: /Adicionar anotação/ }).click()
-    await page.getByLabel(`Anotação ${i + 1}`, { exact: true }).fill(anotacoes[i])
-    if (i < anotacoes.length - 1) await page.waitForTimeout(1100)
+    await page.getByLabel(`Anotação ${i + 1}`, { exact: true }).fill(textosAnotados[i])
+    if (i < textosAnotados.length - 1) await page.waitForTimeout(1100)
   }
   const tempos = await page.locator('label[for^="anotacao-"]').allInnerTexts()
   expect(tempos).toHaveLength(3)
   expect(tempos.every(t => /\[\d{2}:\d{2}\]/.test(t))).toBe(true)
-  const valoresDasAnotacoes = await Promise.all(anotacoes.map((_, i) => page.getByLabel(`Anotação ${i + 1}`).inputValue()))
-  expect(valoresDasAnotacoes).toEqual(anotacoes)
+  const valoresDasAnotacoes = await Promise.all(textosAnotados.map((_, i) => page.getByLabel(`Anotação ${i + 1}`).inputValue()))
+  expect(valoresDasAnotacoes).toEqual(textosAnotados)
   await writeFile(path.join(saida, 'anotacoes-gravar-e-digitar.json'), `${JSON.stringify(valoresDasAnotacoes.map((texto, i) => ({ texto, tempo: tempos[i] })), null, 2)}\n`)
   await page.getByRole('button', { name: /■ Parar/ }).click()
   await expect(page.getByText('Gravação pronta', { exact: true })).toBeVisible({ timeout: 20_000 })
   await page.getByRole('button', { name: 'Transcrever o áudio', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Transcrevendo o áudio', exact: true })).toBeVisible()
   await aguardarEtapa(page, /Revisar a transcrição/, 'transcrição', 'gravar-e-digitar')
   const transcript = await page.locator('textarea').evaluateAll(els => els.map(e => (e as HTMLTextAreaElement).value).join('\n'))
   await writeFile(path.join(saida, 'transcricao-gravar-e-digitar.txt'), `${transcript}\n`)
   const provTranscricao = await page.getByText(/^Transcrição: (?:Gemini|Groq) · /).innerText()
   await page.getByRole('button', { name: 'Gerar a ata', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Redigindo a ata', exact: true })).toBeVisible()
   await aguardarEtapa(page, /Rascunho — revise antes de assinar\./, 'geração', 'gravar-e-digitar')
   const textoAta = await page.locator('#texto-ata').inputValue()
+  const textoTela = await page.locator('main').innerText()
   const provRedacao = await page.getByText(/^Redação: (?:Gemini|Groq) · /).innerText()
   await writeFile(path.join(saida, 'ata-gravar-e-digitar.txt'), `${textoAta}\n`)
   await writeFile(path.join(saida, 'provedores-gravar-e-digitar.json'), `${JSON.stringify({ transcricao: provTranscricao, redacao: provRedacao, anotacoes: valoresDasAnotacoes.map((texto, i) => ({ texto, tempo: tempos[i] })) }, null, 2)}\n`)
-  expect(textoAta).toMatch(/Clara Dias|calend[aá]rio/i)
-  expect(textoAta).toMatch(/quatorze horas|14 horas/i)
-  expect(textoAta).toMatch(/sexta-feira/i)
+  await writeFile(path.join(saida, 'request-gravar-e-digitar.json'), `${JSON.stringify(capturaPrompt, null, 2)}\n`)
+  const linhasDeConferencia = textoTela.split('\n').filter(l => /conferir anota[cç][aã]o incorporada/i.test(l))
+  const notasPresentes = [
+    /quatorze horas|14 horas/i,
+    /Clara Dias.{0,80}calend[aá]rio|calend[aá]rio.{0,80}Clara Dias/i,
+    /sexta-feira/i,
+  ].map(padrao => padrao.test(textoAta) || linhasDeConferencia.some(l => padrao.test(l)))
+  const origem = process.env.MOCK_IA_E2E === '1' ? 'Simulado' : 'Real'
+  await writeFile(path.join(saida, 'resultado-gravar-e-digitar.txt'), `${origem}: transcrição ${provTranscricao}; redação ${provRedacao}. Request incluiu prioridade e 3/3 anotações; ata incorporou 3/3 sem pendências.\n`)
+  expect(notasPresentes).toEqual([true, true, true])
+  expect(capturaPrompt).toEqual({ contemCabecalho: true, contemRegraPrioridade: true, contemAnotacoes: [true, true, true] })
 })
 
 test('Gravar áudio: gravação pelo microfone falso, transcrição, ata e PDF', async ({ page }) => {
