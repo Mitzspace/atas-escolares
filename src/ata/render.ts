@@ -490,6 +490,26 @@ function assinatura(p: Participante, meta: MeetingMetadata): Pessoa {
 
 /** Monta a ata final: abertura e encerramento por código, corpo do LLM, números por extenso. */
 export function renderAta(meta: MeetingMetadata, extraida: AtaExtraida, transcript: TranscriptSegment[] = []): AtaRenderizada {
+  return montarAta(meta, extraida, desenvolvimento(meta, extraida), transcript);
+}
+
+/**
+ * "Usar como está": o texto digitado pela usuária vira o desenvolvimento, sem passar pela IA.
+ * Abertura, ausentes e encerramento são gerados por código; números/abreviações viram padrão como em `renderAta`.
+ * Quebras de linha viram espaço (bloco único). Texto vazio gera [PENDENTE: desenvolvimento da reunião].
+ * `cienciaOrientado` só vale em orientação (default: pendente). Não há validação do conteúdo: a revisão aponta o que sobrar.
+ */
+export function renderAtaTextoLivre(
+  meta: MeetingMetadata,
+  texto: string,
+  opcoes: { cienciaOrientado?: boolean } = {},
+): AtaRenderizada {
+  const corpo = limpar(texto);
+  const extraida: AtaExtraida = { itens: [], deliberacoes: [], encaminhamentos: [], pendencias: [], cienciaOrientado: opcoes.cienciaOrientado };
+  return montarAta(meta, extraida, [corpo ? comPontoFinal(corpo) : '[PENDENTE: desenvolvimento da reunião]'], []);
+}
+
+function montarAta(meta: MeetingMetadata, extraida: AtaExtraida, corpo: string[], transcript: TranscriptSegment[]): AtaRenderizada {
   const pres = presentes(meta);
   const aus = ausentes(meta, pres);
 
@@ -503,7 +523,7 @@ export function renderAta(meta: MeetingMetadata, extraida: AtaExtraida, transcri
         : `Não compareceram ${g === 'f' ? 'as seguintes convocadas' : 'os seguintes convocados'}: ${lista}.`,
     );
   }
-  partes.push(...desenvolvimento(meta, extraida).map(comPontoFinal), encerramento(meta, extraida));
+  partes.push(...corpo.map(comPontoFinal), encerramento(meta, extraida));
 
   const texto = textoLivreParaPadrao(limpar(partes.join(' '))).replace(/\s+([,;:.])/g, '$1');
 

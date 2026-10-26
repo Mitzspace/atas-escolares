@@ -26,3 +26,19 @@ export {
 export { numerosParaExtenso, abreviacoesPorExtenso, textoLivreParaPadrao } from './numeros';
 
 export { anonimizarAtaExtraida } from './anonimizacao';
+
+export type { Anotacao, ModoRegistro, ResumoAta, AtribuicaoFalante } from './registro';
+export {
+  FALANTE_NAO_IDENTIFICADO,
+  falantesResponseSchema,
+  buildFalantesPrompt,
+  aplicarFalantes,
+  nomesParaFalantes,
+  ehFalanteGenerico,
+  anotacoesValidas,
+  modoDe,
+  regrasDoModo,
+  linhasAnotacoes,
+  extrairResumo,
+} from './registro';
+export { renderAtaTextoLivre } from './render';

@@ -1,4 +1,5 @@
 import { iniciais, parseVinculo } from './identificacao';
+import { ehFalanteGenerico, linhasAnotacoes, modoDe, regrasDoModo, type Anotacao } from './registro';
 import { listarOrientados, type MeetingMetadata, type Participante, type TipoAta, type TranscriptSegment } from './types';
 
 const dataBr = (iso: string) => iso.split('-').reverse().join('/');
@@ -200,7 +201,7 @@ function anonimizacao(meta: MeetingMetadata): string {
 /** A autoria informada é local ao trecho; rótulos genéricos nunca viram nomes por propagação. */
 function trechosRevisados(transcript: TranscriptSegment[]): string[] {
   return transcript.flatMap((s, i) => {
-    const generico = !s.speaker.trim() || /^(?:falante|speaker)(?:\s*\d+)?(?:\s*\(.*\))?$/iu.test(s.speaker.trim());
+    const generico = ehFalanteGenerico(s.speaker);
     const fala = `[${s.start}] ${s.speaker}: ${s.text}`;
     return generico ? [fala] : [
       `Autoria informada do trecho ${i + 1} (${s.start}–${s.end}): ${JSON.stringify(s.speaker)}; vale somente para este trecho.`,
@@ -213,11 +214,14 @@ function trechosRevisados(transcript: TranscriptSegment[]): string[] {
 export function buildAtaPrompt(
   meta: MeetingMetadata,
   transcript: TranscriptSegment[],
+  anotacoes: Anotacao[] = [],
 ): { systemInstruction: string; userPrompt: string } {
   const tipo = tipoDe(meta);
+  const modo = modoDe(transcript, anotacoes);
+  const regrasModo = regrasDoModo(modo);
   const systemInstruction =
     `Você é redator(a) de atas de escolas do Brasil. ${INTRO[tipo]} ${ABERTURA_ENCERRAMENTO}\n\n` +
-    `${PRODUZIR[tipo]}\n\n${SYSTEM_REGRAS}${anonimizacao(meta)}`;
+    `${PRODUZIR[tipo]}\n\n${SYSTEM_REGRAS}${anonimizacao(meta)}${regrasModo ? `\n\n${regrasModo}` : ''}`;
 
   const horario = `das ${meta.horaInicio}${meta.horaFim ? ` às ${meta.horaFim}` : ''}`;
   const linhas: string[] = [
@@ -235,9 +239,10 @@ export function buildAtaPrompt(
   linhas.push(
     `Anonimizar alunos: ${meta.anonimizarAlunos ? 'SIM' : 'não'}`,
     '',
-    'TRANSCRIÇÃO (formato [MM:SS] falante: fala)',
-    ...trechosRevisados(transcript),
-    '',
+    ...(modo === 'digitar'
+      ? []
+      : ['TRANSCRIÇÃO (formato [MM:SS] falante: fala)', ...trechosRevisados(transcript), '']),
+    ...(modo === 'audio' ? [] : ['ANOTAÇÕES DA SECRETÁRIA (formato [MM:SS] texto; sem tempo = anotação solta)', ...linhasAnotacoes(anotacoes), '']),
     'Redija o corpo da ata em JSON conforme as regras do sistema.',
   );
 
