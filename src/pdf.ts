@@ -76,6 +76,8 @@ export function preservarHifens(texto: string) {
     .map(text => /[\p{L}\p{N}]-[\p{L}\p{N}]/u.test(text) ? { text, noWrap: true } : { text })
 }
 
+const textoDoPdf = (texto: string) => /[\p{L}\p{N}]-[\p{L}\p{N}]/u.test(texto) ? preservarHifens(texto) : texto
+
 /**
  * Linha de cargo da assinatura: "Mãe do aluno P.H., 5º ano B", "Aluno(a) – 5º ano B".
  * Se a ata já trouxe o vínculo no cargo, não repete.
@@ -96,8 +98,8 @@ function assinatura(p: Pessoa, cargo = p.cargo) {
     margin: [0, 22, 0, 0] as [number, number, number, number],
     stack: [
       { canvas: [{ type: 'line' as const, x1: 0, y1: 0, x2: 250, y2: 0, lineWidth: 0.6 }] },
-      { text: p.nome || ' ', fontSize: 11, margin: [0, 2, 0, 0] },
-      ...(cargo.trim() ? [{ text: cargo, fontSize: 10, italics: true }] : []),
+      { text: textoDoPdf(p.nome || ' '), fontSize: 11, margin: [0, 2, 0, 0] },
+      ...(cargo.trim() ? [{ text: textoDoPdf(cargo), fontSize: 10, italics: true }] : []),
     ],
   }
 }
@@ -114,7 +116,7 @@ export const temAnexoDePresenca = (meta?: MeetingMetadata) => !!meta && usaLista
 
 function anexoDePresenca(ata: AtaRenderizada, meta: MeetingMetadata) {
   const linhas = responsaveisPresentes(meta)
-  const cel = (text: string, extra = {}) => ({ text, fontSize: 11, lineHeight: 1.1, ...extra })
+  const cel = (text: string, extra = {}) => ({ text: textoDoPdf(text), fontSize: 11, lineHeight: 1.1, ...extra })
   return [
     { text: 'LISTA DE PRESENÇA', alignment: 'center' as const, bold: true, pageBreak: 'before' as const, margin: [0, 0, 0, 4] as [number, number, number, number] },
     { text: `Anexo da ${ata.titulo}`, alignment: 'center' as const, fontSize: 10, italics: true, margin: [0, 0, 0, 14] as [number, number, number, number] },
@@ -154,8 +156,8 @@ export function montarDocumento(ata: AtaRenderizada, textoFinal: string, meta?: 
     }),
     content: [
       { image: logo || logoPadraoPng, fit: [71, 71] as [number, number], alignment: 'center' as const, margin: [0, 0, 0, 10] as [number, number, number, number] },
-      ...ata.cabecalho.filter(Boolean).map((l, i) => ({ text: l, alignment: 'center' as const, bold: i === 0, lineHeight: 1.2 })),
-      { text: ata.titulo, alignment: 'center' as const, bold: true, margin: [0, 18, 0, 14] as [number, number, number, number] },
+      ...ata.cabecalho.filter(Boolean).map((l, i) => ({ text: textoDoPdf(l), alignment: 'center' as const, bold: i === 0, lineHeight: 1.2 })),
+      { text: textoDoPdf(ata.titulo), alignment: 'center' as const, bold: true, margin: [0, 18, 0, 14] as [number, number, number, number] },
       { text: preservarHifens(preencherComTracos(textoFinal)), alignment: 'justify' as const },
       ...assinaturas.map(a => assinatura(a, cargoDaAssinatura(a, meta))),
       ...(anexo ? anexoDePresenca(ata, meta) : []),
