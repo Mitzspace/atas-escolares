@@ -1,7 +1,7 @@
 import { GoogleGenAI, createPartFromUri, createUserContent, FileState, type GenerateContentResponse } from '@google/genai'
 import {
   ataResponseSchema, buildAtaPrompt, buildTranscriptionPrompt, transcriptResponseSchema,
-  type AtaExtraida, type MeetingMetadata, type TranscriptSegment,
+  type Anotacao, type AtaExtraida, type MeetingMetadata, type TranscriptSegment,
 } from './ata-api'
 
 import { MODELOS, MODELO_PADRAO, ErroProvedor, type TipoErroProvedor, type ProvedorId } from './types'
@@ -222,11 +222,13 @@ export async function gerarAta(opts: {
   modelo: string
   meta: MeetingMetadata
   transcript: TranscriptSegment[]
+  /** Anotações digitadas (modos Digitar e Gravar e digitar); com `transcript` vazio a ata sai só delas. */
+  anotacoes?: Anotacao[]
   onProgress?: Progresso
   ai?: GoogleGenAI
 }): Promise<{ extraida: AtaExtraida; modeloUsado: string }> {
   const ai = opts.ai ?? new GoogleGenAI({ apiKey: opts.apiKey })
-  const { systemInstruction, userPrompt } = buildAtaPrompt(opts.meta, opts.transcript)
+  const { systemInstruction, userPrompt } = buildAtaPrompt(opts.meta, opts.transcript, opts.anotacoes)
   try {
     const { resp, modeloUsado } = await comFallback(opts.modelo, async atual => ({
       resp: await ai.models.generateContent({
@@ -239,6 +241,35 @@ export async function gerarAta(opts: {
       `Redigindo a ata — ${atual} · tentativa ${tentativa}/${TENTATIVAS_POR_MODELO}${fallback ? ' (modelo alternativo)' : ''}…`, 0.3, atual,
     ))
     return { extraida: parseJsonResposta<AtaExtraida>(resp.text, resp.candidates?.[0]?.finishReason), modeloUsado }
+  } catch (e) {
+    throw traduzirErro(e)
+  }
+}
+
+/** Chamada genérica de texto -> JSON estruturado (usada na identificação de falantes). */
+export async function gerarJsonGemini<T>(opts: {
+  apiKey: string
+  modelo: string
+  systemInstruction: string
+  userPrompt: string
+  schema: object
+  etapa: string
+  onProgress?: Progresso
+  ai?: GoogleGenAI
+}): Promise<{ dados: T; modeloUsado: string }> {
+  const ai = opts.ai ?? new GoogleGenAI({ apiKey: opts.apiKey })
+  try {
+    const { resp, modeloUsado } = await comFallback(opts.modelo, async atual => ({
+      resp: await ai.models.generateContent({
+        model: atual,
+        contents: opts.userPrompt,
+        config: { systemInstruction: opts.systemInstruction, responseMimeType: 'application/json', responseSchema: opts.schema as never, temperature: 0.1 },
+      }),
+      modeloUsado: atual,
+    }), (atual, tentativa, fallback) => opts.onProgress?.(
+      `${opts.etapa} — ${atual} · tentativa ${tentativa}/${TENTATIVAS_POR_MODELO}${fallback ? ' (modelo alternativo)' : ''}…`, 0.5, atual,
+    ))
+    return { dados: parseJsonResposta<T>(resp.text, resp.candidates?.[0]?.finishReason), modeloUsado }
   } catch (e) {
     throw traduzirErro(e)
   }

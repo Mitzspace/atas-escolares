@@ -1,4 +1,4 @@
-import { ataResponseSchema, buildAtaPrompt, type AtaExtraida, type MeetingMetadata, type TranscriptSegment } from './ata-api'
+import { ataResponseSchema, buildAtaPrompt, regrasDoModo, modoDe, type Anotacao, type AtaExtraida, type MeetingMetadata, type TranscriptSegment } from './ata-api'
 import { blocosTranscricao, conferirCotaDiaria, consolidarParciais, estimarTokens, executarNaJanela, LIMITE_ENTRADA_GROQ } from './groq-limites'
 import { dividirAudio, deslocarTempos } from './audio-partes'
 import type { Progresso } from './gemini'
@@ -129,15 +129,16 @@ function validarNo(valor: unknown, schema: Schema, opcional = false): unknown {
 }
 export function validarAtaGroq(valor: unknown): AtaExtraida { return validarNo(valor, ataResponseSchema as Schema) as AtaExtraida }
 
-type OpcoesRedacaoGroq = { apiKey: string; modelo: string; meta: MeetingMetadata; transcript: TranscriptSegment[]; onProgress?: Progresso }
+type OpcoesRedacaoGroq = { apiKey: string; modelo: string; meta: MeetingMetadata; transcript: TranscriptSegment[]; anotacoes?: Anotacao[]; onProgress?: Progresso }
 const regrasParciais = `Extraia AtaExtraida parcial de uma reunião escolar, em português formal e terceira pessoa, sem abertura nem encerramento. Registre SOMENTE fatos destes trechos; não complete a reunião pela pauta/cadastro. Preserve todos os fatos relevantes: números, datas, votos, mais de quinze faltas, argumentos contrários (inclusive pais/professores trabalhando sábado), perguntas e respostas. Respeite o speaker informado por trecho. Rótulos genéricos como "Falante" não identificam uma pessoa, nem herdam autoria automaticamente; nunca adivinhe quem falou. Eu vou mandar é compromisso do speaker identificado, nunca do cargo presumido. Texto corrompido não vira sujeito fictício. Pergunta fora da pauta e será verificada fica em item de pauta 0, não cria tarefa. Não infira consenso; vincule votos àquela decisão. Use os índices originais da pauta. Só extraia tarefas efetivamente assumidas e dados de responsável/prazo ditos. Sem fato, arrays vazios; incerteza vira [confirmar: descrição]. Alunos não orientados: use iniciais quando anonimização estiver ativa. Preserve nomes de eventos e todos os dados relevantes. Use null para campos opcionais sem informação, sem inventar.`
 function pedidoRedacao(opts: OpcoesRedacaoGroq, parcial = false) {
-  const { systemInstruction, userPrompt } = buildAtaPrompt(opts.meta, opts.transcript)
+  const { systemInstruction, userPrompt } = buildAtaPrompt(opts.meta, opts.transcript, opts.anotacoes)
+  const regrasModo = regrasDoModo(modoDe(opts.transcript, opts.anotacoes))
   return {
     model: opts.modelo, temperature: 0.2, max_completion_tokens: 3072,
     ...(opts.modelo.startsWith('openai/gpt-oss-') ? { reasoning_effort: 'low' } : {}),
     messages: [
-      { role: 'system', content: parcial ? regrasParciais : `${systemInstruction}\n\nResponda em português do Brasil. Na saída estruturada, use null para campos opcionais sem informação; null equivale a omitir o campo. Listas de fatos não registrados ficam vazias. Não invente para preencher campos do schema.` },
+      { role: 'system', content: parcial ? `${regrasParciais}${regrasModo ? `\n\n${regrasModo}` : ''}` : `${systemInstruction}\n\nResponda em português do Brasil. Na saída estruturada, use null para campos opcionais sem informação; null equivale a omitir o campo. Listas de fatos não registrados ficam vazias. Não invente para preencher campos do schema.` },
       { role: 'user', content: userPrompt },
     ],
     response_format: { type: 'json_schema', json_schema: { name: 'ata_escolar', strict: true, schema: schemaAtaGroq } },
@@ -188,6 +189,49 @@ export async function redigirGroq(opts: OpcoesRedacaoGroq) {
   }
   opts.onProgress?.('Consolidando os relatos sem duplicar decisões e encaminhamentos…', 0.95, opts.modelo, 'groq')
   return { extraida: parciais.length === 1 ? parciais[0] : consolidarParciais(parciais), modeloUsado: opts.modelo }
+}
+
+/** Chamada genérica de texto -> JSON estruturado, validada contra `schema`. A entrada precisa caber no limite do Groq (o chamador divide). */
+export async function gerarJsonGroq<T>(opts: {
+  apiKey: string; modelo: string; systemInstruction: string; userPrompt: string; schema: object; nome: string; etapa: string; onProgress?: Progresso
+}): Promise<{ dados: T; modeloUsado: string }> {
+  if (!MODELOS_GROQ.some(m => m.id === opts.modelo)) throw new ErroProvedor('conteudo', 'Escolha um modelo de redação Groq disponível em Configurações.')
+  const pedido = {
+    model: opts.modelo, temperature: 0.1, max_completion_tokens: 2048,
+    ...(opts.modelo.startsWith('openai/gpt-oss-') ? { reasoning_effort: 'low' } : {}),
+    messages: [
+      { role: 'system', content: `${opts.systemInstruction}\n\nResponda em português do Brasil, só com o JSON do schema.` },
+      { role: 'user', content: opts.userPrompt },
+    ],
+    response_format: { type: 'json_schema', json_schema: { name: opts.nome, strict: true, schema: converterSchema(opts.schema as Schema) } },
+  }
+  const entrada = estimarTokens(pedido)
+  if (entrada > LIMITE_ENTRADA_GROQ) throw new ErroProvedor('cota', 'A entrada não cabe no limite de tokens do Groq.')
+  pedido.max_completion_tokens = Math.min(2048, 7900 - entrada)
+  const estimativa = entrada + pedido.max_completion_tokens
+  conferirCotaDiaria(opts.apiKey, opts.modelo, estimativa)
+  const aguardando = () => opts.onProgress?.(`${opts.etapa}, aguardando limite do Groq…`, 0.5, opts.modelo, 'groq')
+  let resposta: unknown
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    try {
+      resposta = await executarNaJanela(opts.apiKey, opts.modelo, estimativa, () => {
+        opts.onProgress?.(`${opts.etapa} · ${opts.modelo}…`, 0.5, opts.modelo, 'groq')
+        return requisitar('chat/completions', opts.apiKey, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pedido) })
+      }, aguardando)
+      break
+    } catch (e) {
+      if (!(e instanceof CotaGroq) || e.diaria || tentativa === 1) throw e
+      aguardando()
+    }
+  }
+  const escolha = objeto(resposta) && Array.isArray(resposta.choices) ? resposta.choices[0] : undefined
+  const mensagem = objeto(escolha) ? escolha.message : undefined
+  if (!objeto(escolha) || escolha.finish_reason === 'length' || !objeto(mensagem) || typeof mensagem.content !== 'string' || !mensagem.content.trim()) {
+    throw new ErroProvedor('conteudo', 'O Groq não concluiu a resposta ou ela foi cortada.')
+  }
+  let json: unknown
+  try { json = JSON.parse(mensagem.content) } catch { throw new ErroProvedor('conteudo', 'O Groq devolveu uma resposta fora do formato JSON esperado.') }
+  return { dados: validarNo(json, opts.schema as Schema) as T, modeloUsado: opts.modelo }
 }
 
 /** Consulta somente o catálogo: não envia áudio nem gera texto para testar a chave. */
