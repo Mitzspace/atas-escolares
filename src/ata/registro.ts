@@ -55,11 +55,12 @@ export function linhasAnotacoes(anotacoes: Anotacao[]): string[] {
 
 // ---------------------------------------------------------------- falantes
 
-/** Nomes que podem ser atribuídos a um trecho (presentes, presidente, secretário e orientados). */
+/** Nomes que podem ser atribuídos a um trecho (presentes, responsável, presidente/secretário antigos e orientados). */
 export function nomesParaFalantes(meta: MeetingMetadata, participantes: Participante[] = meta.participantes): string[] {
   const vistos = new Map<string, string>();
   const nomes = [
     ...participantes.filter((p) => p.presente !== false).map((p) => p.nome),
+    meta.responsavel?.nome,
     meta.presidente?.nome,
     meta.secretario?.nome,
     ...listarOrientados(meta).map((p) => p.nome),

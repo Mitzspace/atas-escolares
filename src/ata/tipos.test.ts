@@ -33,8 +33,8 @@ const resp = (nome: string, cargo: string, vinculo: string, presente = true): Pa
 });
 
 describe('TIPOS_ATA', () => {
-  it('descreve os três tipos', () => {
-    expect(Object.keys(TIPOS_ATA)).toEqual(['pedagogica', 'pais', 'orientacao']);
+  it('descreve os quatro tipos', () => {
+    expect(Object.keys(TIPOS_ATA)).toEqual(['pedagogica', 'pais', 'orientacao', 'outra']);
     expect(TIPOS_ATA.pais.titulo).toBe('REUNIÃO DE PAIS E RESPONSÁVEIS');
     for (const t of Object.values(TIPOS_ATA)) expect(t.nome && t.descricao).toBeTruthy();
   });

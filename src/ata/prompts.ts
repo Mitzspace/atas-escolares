@@ -1,6 +1,6 @@
 import { iniciais, parseVinculo } from './identificacao';
 import { ehFalanteGenerico, linhasAnotacoes, modoDe, regrasDoModo, type Anotacao } from './registro';
-import { listarOrientados, type MeetingMetadata, type Participante, type TipoAta, type TranscriptSegment } from './types';
+import { listarOrientados, quemLavra, quemOrienta, type MeetingMetadata, type Participante, type TipoAta, type TranscriptSegment } from './types';
 
 const dataBr = (iso: string) => iso.split('-').reverse().join('/');
 const tipoDe = (meta: MeetingMetadata): TipoAta => meta.tipo ?? 'pedagogica';
@@ -17,9 +17,10 @@ function descreverContexto(meta: MeetingMetadata): string {
     const quem = os.length
       ? os.map((o) => `${o.categoria === 'aluno' ? 'aluno(a)' : 'funcionário(a)'} ${o.nome}`).join('; ')
       : 'orientado(a) não informado(a)';
-    return `Orientação a ${quem}, conduzida por ${meta.presidente.nome}${meta.presidente.cargo ? ` (${meta.presidente.cargo})` : ''}, na ${onde}.`;
+    return `Orientação a ${quem}, conduzida por ${quemOrienta(meta).nome}${quemOrienta(meta).cargo ? ` (${quemOrienta(meta).cargo})` : ''}, na ${onde}.`;
   }
-  return `Reunião pedagógica ${meta.ordinaria ? 'ordinária' : 'extraordinária'} da ${onde}.`;
+  if (tipo === 'outra') return `${meta.tipoReuniao?.trim() || 'Reunião'} da ${onde}.`;
+  return `Reunião pedagógica${meta.ordinaria === undefined ? '' : meta.ordinaria ? ' ordinária' : ' extraordinária'} da ${onde}.`;
 }
 
 /**
@@ -47,8 +48,11 @@ function pessoas(meta: MeetingMetadata, anonimizar: boolean): string[] {
     }
     linhas.push(`- ${nome} — ${p.cargo || (p.categoria === 'aluno' ? 'aluno(a)' : 'cargo não informado')}${extra}${nota}`);
   };
-  add({ ...meta.presidente, presente: true }, tipo === 'orientacao' ? ' (conduz a orientação)' : ' (presidente da reunião)');
-  add({ ...meta.secretario, presente: true }, ' (secretário(a) da reunião)');
+  if (meta.responsavel) add({ ...meta.responsavel, presente: true }, tipo === 'orientacao' ? ' (conduz a orientação e redige a ata)' : ' (responsável pelo registro da ata)');
+  else {
+    add({ ...quemOrienta(meta), presente: true }, tipo === 'orientacao' ? ' (conduz a orientação)' : ' (presidente da reunião)');
+    add({ ...quemLavra(meta), presente: true }, ' (secretário(a) da reunião)');
+  }
   for (const o of listarOrientados(meta)) add(o, ' (orientado(a))');
   for (const p of meta.participantes) add(p, p.presente ? '' : ' (ausente)');
   return linhas;
@@ -91,7 +95,10 @@ export function buildTranscriptionPrompt(meta: MeetingMetadata, faixa?: { inicio
   return linhas.join('\n');
 }
 
-const INTRO: Record<TipoAta, string> = {
+/** 'outra' usa as regras da pedagógica (o rótulo da reunião entra no contexto). */
+const tipoRegras = (tipo: TipoAta): Exclude<TipoAta, 'outra'> => (tipo === 'outra' ? 'pedagogica' : tipo);
+
+const INTRO: Record<Exclude<TipoAta, 'outra'>, string> = {
   pedagogica:
     'Sua tarefa é transformar a transcrição de uma reunião pedagógica no CORPO de uma ata formal, devolvendo dados estruturados em JSON.',
   pais: 'Sua tarefa é transformar a transcrição de uma reunião de pais e responsáveis no CORPO de uma ata formal, devolvendo dados estruturados em JSON.',
@@ -99,7 +106,7 @@ const INTRO: Record<TipoAta, string> = {
     'Sua tarefa é transformar a transcrição de uma orientação (atendimento em que um funcionário de cargo superior orienta um funcionário ou um aluno) no CORPO de uma ata formal, devolvendo dados estruturados em JSON.',
 };
 
-const PRODUZIR: Record<TipoAta, string> = {
+const PRODUZIR: Record<Exclude<TipoAta, 'outra'>, string> = {
   pedagogica: `O QUE PRODUZIR
 - "itens": relatos somente dos itens efetivamente tratados na transcrição, na ordem, com "pauta" = número do item (começando em 1). Se algo relevante foi tratado fora da pauta, crie um item com "pauta": 0. Cada "relato" começa com "No primeiro item da pauta," (ou segundo, terceiro...; para pauta 0, "Em assuntos gerais,") e conta em texto corrido o que foi exposto, por quem, os principais pontos e as conclusões.
 - "deliberacoes": somente decisões efetivamente tomadas. Preencha "votacao" apenas se a transcrição disser como foi decidido (ex.: "aprovado por unanimidade", "aprovado por maioria, com dois votos contrários"). Se uma votação ocorreu mas o resultado não ficou claro, escreva "[PENDENTE: resultado da votação]".
@@ -220,8 +227,8 @@ export function buildAtaPrompt(
   const modo = modoDe(transcript, anotacoes);
   const regrasModo = regrasDoModo(modo);
   const systemInstruction =
-    `Você é redator(a) de atas de escolas do Brasil. ${INTRO[tipo]} ${ABERTURA_ENCERRAMENTO}\n\n` +
-    `${PRODUZIR[tipo]}\n\n${SYSTEM_REGRAS}${anonimizacao(meta)}${regrasModo ? `\n\n${regrasModo}` : ''}`;
+    `Você é redator(a) de atas de escolas do Brasil. ${tipo === 'outra' ? INTRO.pedagogica.replace('uma reunião pedagógica', `uma reunião (${meta.tipoReuniao?.trim() || 'reunião escolar'})`) : INTRO[tipo]} ${ABERTURA_ENCERRAMENTO}\n\n` +
+    `${PRODUZIR[tipoRegras(tipo)]}\n\n${SYSTEM_REGRAS}${anonimizacao(meta)}${regrasModo ? `\n\n${regrasModo}` : ''}`;
 
   const horario = `das ${meta.horaInicio}${meta.horaFim ? ` às ${meta.horaFim}` : ''}`;
   const linhas: string[] = [

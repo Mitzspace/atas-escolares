@@ -11,7 +11,10 @@ export type {
   AtaExtraida,
   AtaRenderizada,
 } from './types';
-export { TIPOS_ATA, listarOrientados } from './types';
+export {
+  TIPOS_ATA, listarOrientados, quemLavra, quemOrienta, temPresidencia,
+  OPCOES_TIPO_REUNIAO, OUTRO_TIPO_REUNIAO, CARGOS_SUGERIDOS, tipoDaOpcao,
+} from './types';
 export { buildTranscriptionPrompt, buildAtaPrompt } from './prompts';
 export { transcriptResponseSchema, ataResponseSchema } from './schemas';
 export { renderAta, usaListaAnexa, LIMITE_RESPONSAVEIS_NO_TEXTO } from './render';

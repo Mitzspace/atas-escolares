@@ -1,4 +1,4 @@
-import { TIPOS_ATA, listarOrientados, type AtaExtraida, type AtaRenderizada, type Categoria, type MeetingMetadata, type Participante, type Pessoa, type TipoAta } from './types';
+import { TIPOS_ATA, listarOrientados, quemLavra, quemOrienta, temPresidencia, type AtaExtraida, type AtaRenderizada, type Categoria, type MeetingMetadata, type Participante, type Pessoa, type TipoAta } from './types';
 import { dataPorExtenso, horaPorExtenso, numeroPorExtenso, ordinalPorExtenso } from './extenso';
 import { iniciais, parseVinculo } from './identificacao';
 export { iniciais, parseVinculo } from './identificacao';
@@ -62,7 +62,11 @@ function pessoaTxt(p: Pessoa): string {
 }
 
 /** quem presidiu também lavrou a ata */
-const mesmaPessoa = (meta: MeetingMetadata) => normalizar(meta.presidente.nome) === normalizar(meta.secretario.nome);
+const mesmaPessoa = (meta: MeetingMetadata) =>
+  temPresidencia(meta) && normalizar(meta.presidente!.nome) === normalizar(quemLavra(meta).nome);
+
+/** Cargo no texto, entre vírgulas: ", diretora" ou "" quando não há cargo. */
+const cargoOpcional = (p: Pessoa) => (p.cargo.trim() ? `, ${cargoNoTexto(p.cargo)}` : '');
 
 function tituloSecretario(p: Pessoa): string {
   const w = (p.cargo.trim().split(/\s+/)[0] ?? '').toLocaleLowerCase('pt-BR');
@@ -194,7 +198,7 @@ function chamada(ps: Participante[], n: { m: string; f: string; mp: string; fp: 
 
 const maiuscula1 = (s: string) => s.charAt(0).toLocaleUpperCase('pt-BR') + s.slice(1);
 
-/** Quem esteve presente, em ordem: presidente, secretário, orientado e demais presentes. */
+/** Quem esteve presente, em ordem: responsável (ou presidente e secretário, nas atas antigas), orientado e demais presentes. */
 function presentes(meta: MeetingMetadata): Participante[] {
   const lista: Participante[] = [];
   const vistos = new Set<string>();
@@ -204,8 +208,11 @@ function presentes(meta: MeetingMetadata): Participante[] {
     vistos.add(k);
     lista.push({ ...p, presente: true });
   };
-  add({ ...meta.presidente, presente: true });
-  add({ ...meta.secretario, presente: true });
+  if (meta.responsavel) add({ ...meta.responsavel, presente: true });
+  else {
+    add({ ...(meta.presidente ?? quemLavra(meta)), presente: true });
+    add({ ...quemLavra(meta), presente: true });
+  }
   listarOrientados(meta).forEach(add);
   meta.participantes.filter((p) => p.presente).forEach(add);
   return lista;
@@ -239,9 +246,10 @@ function listaPauta(meta: MeetingMetadata): string {
 }
 
 function quemSecretaria(meta: MeetingMetadata): string {
+  if (!temPresidencia(meta)) return '';
   return mesmaPessoa(meta)
     ? 'que também secretariou a reunião, '
-    : `comigo, ${limpar(meta.secretario.nome)}, ${tituloSecretario(meta.secretario)}, `;
+    : `comigo, ${limpar(quemLavra(meta).nome)}, ${tituloSecretario(quemLavra(meta))}, `;
 }
 
 /** "sua mãe, Clara Lima" / "seu pai, ..." / "seu(sua) responsável, ...". */
@@ -260,7 +268,7 @@ function quemSeReuniu(meta: MeetingMetadata, pres: Participante[]): string {
   const tipo = tipoDe(meta);
 
   if (tipo === 'orientacao') {
-    const orientador = pessoaNoTexto({ ...meta.presidente, presente: true }, meta);
+    const orientador = pessoaNoTexto({ ...quemOrienta(meta), presente: true }, meta);
     const orientados = listarOrientados(meta);
     const responsaveis = pres.filter((p) => categoriaDe(p) === 'responsavel');
     // com um só orientado, todo responsável o acompanha; com vários, cada responsável acompanha o aluno do seu vínculo
@@ -301,15 +309,15 @@ function quemSeReuniu(meta: MeetingMetadata, pres: Participante[]): string {
       (p) =>
         !(categoriaDe(p) === 'responsavel' && acompanhados.has(normalizar(p.nome))) &&
         !ehOrientado(meta, p) &&
-        normalizar(p.nome) !== normalizar(meta.presidente.nome) &&
-        !(normalizar(p.nome) === normalizar(meta.secretario.nome)),
+        normalizar(p.nome) !== normalizar(quemOrienta(meta).nome) &&
+        !(normalizar(p.nome) === normalizar(quemLavra(meta).nome)),
     );
     const outrosTxt = outros.length ? `, e ainda ${juntarComE(outros.map((p) => pessoaNoTexto(p, meta)))}` : '';
-    const sec = mesmaPessoa(meta) ? '' : `, ${quemSecretaria(meta).replace(/, $/, '')}`;
+    const sec = quemSecretaria(meta) && !mesmaPessoa(meta) ? `, ${quemSecretaria(meta).replace(/, $/, '')}` : '';
     return `reuniram-se ${orientador}, e ${quem}${outrosTxt}${sec}, totalizando ${total}, para tratar de orientação sobre: ${listaPauta(meta)}.`;
   }
 
-  const sob = `sob a presidência de ${pessoaTxt(meta.presidente)}, `;
+  const sob = temPresidencia(meta) ? `sob a presidência de ${pessoaTxt(meta.presidente!)}, ` : '';
   if (tipo === 'pais') {
     const funcs = pres.filter((p) => categoriaDe(p) === 'funcionario');
     const resps = pres.filter((p) => categoriaDe(p) === 'responsavel');
@@ -438,9 +446,12 @@ function encerramento(meta: MeetingMetadata, extraida: AtaExtraida): string {
   const fim = meta.horaFim?.trim()
     ? horaPorExtenso(meta.horaFim)
     : `[PENDENTE: horário de término da ${orient ? 'orientação' : 'reunião'}]`;
-  const quemLavrou = mesmaPessoa(meta)
-    ? `${meta.presidente.cargo.trim() ? `${cargoNoTexto(meta.presidente.cargo)}, ` : ''}que presidi a reunião`
-    : tituloSecretario(meta.secretario);
+  const lavrador = quemLavra(meta);
+  const quemLavrou = !temPresidencia(meta)
+    ? lavrador.cargo.trim() ? cargoNoTexto(lavrador.cargo) : ''
+    : mesmaPessoa(meta)
+      ? `${meta.presidente!.cargo.trim() ? `${cargoNoTexto(meta.presidente!.cargo)}, ` : ''}que presidi a reunião`
+      : tituloSecretario(lavrador);
   let ciencia = '';
   if (orient) {
     const os = listarOrientados(meta);
@@ -455,8 +466,8 @@ function encerramento(meta: MeetingMetadata, extraida: AtaExtraida): string {
       : `, [PENDENTE: ciência ${plural ? 'dos orientados' : 'do orientado'}]`;
   }
   return (
-    `Nada mais havendo a tratar, foi encerrada a ${orient ? 'orientação' : 'reunião'} ${fim}${ciencia}, e eu, ${limpar(meta.secretario.nome)}, ` +
-    `${quemLavrou}, lavrei a presente ata que, lida e aprovada, será assinada por mim e pelos demais presentes.`
+    `Nada mais havendo a tratar, foi encerrada a ${orient ? 'orientação' : 'reunião'} ${fim}${ciencia}, e eu, ${limpar(lavrador.nome) || '[PENDENTE: nome do responsável pela ata]'}, ` +
+    `${quemLavrou ? `${quemLavrou}, ` : ''}lavrei a presente ata que, lida e aprovada, será assinada por mim e pelos demais presentes.`
   );
 }
 
@@ -464,7 +475,8 @@ function tituloDoc(meta: MeetingMetadata): string {
   const tipo = tipoDe(meta);
   const base = TIPOS_ATA[tipo].titulo;
   let nome: string;
-  if (tipo === 'pedagogica') nome = `${base} ${meta.ordinaria ? 'ORDINÁRIA' : 'EXTRAORDINÁRIA'}`;
+  if (tipo === 'pedagogica') nome = meta.ordinaria === undefined ? base : `${base} ${meta.ordinaria ? 'ORDINÁRIA' : 'EXTRAORDINÁRIA'}`;
+  else if (tipo === 'outra') nome = limpar(meta.tipoReuniao ?? '').toLocaleUpperCase('pt-BR') || base;
   else if (tipo === 'orientacao') {
     const os = listarOrientados(meta);
     const al = os.filter((o) => categoriaDe(o) === 'aluno').length;

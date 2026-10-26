@@ -39,7 +39,7 @@ function nomeDepoisDoPrefixo(resto: string): string | undefined {
 
 function criarAnonimizador(meta: MeetingMetadata, transcript: TranscriptSegment[], fontes: string[]) {
   const orientados = listarOrientados(meta).map(p => p.nome).filter(Boolean);
-  const adultos = [meta.presidente, meta.secretario, ...meta.participantes.filter(p => p.categoria !== 'aluno')].map(p => p.nome).filter(Boolean);
+  const adultos = [meta.responsavel, meta.presidente, meta.secretario, ...meta.participantes.filter(p => p.categoria !== 'aluno')].filter(p => !!p).map(p => p!.nome).filter(Boolean);
   const contexto = [...adultos, meta.escola, meta.rede, ...meta.pauta].filter(Boolean);
   const nomes = [
     ...meta.participantes.filter(p => p.categoria === 'aluno').map(p => p.nome),

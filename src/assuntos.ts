@@ -62,6 +62,7 @@ export type ChaveAssuntos = keyof typeof ASSUNTOS_PADRAO
 
 /** Chave da lista de sugestões; em orientação depende de quem recebe (alunos, funcionários ou ambos). */
 export function chavesDeAssuntos(tipo: TipoAta, categoriasOrientados: string[] = []): ChaveAssuntos[] {
+  if (tipo === 'outra') return ['pedagogica']
   if (tipo !== 'orientacao') return [tipo]
   const temAluno = categoriasOrientados.includes('aluno')
   const temFuncionario = categoriasOrientados.some(c => c !== 'aluno')
