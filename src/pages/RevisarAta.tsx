@@ -55,7 +55,7 @@ export default function RevisarAta() {
     () => (ata ? listaDePresenca(
       ata.meta.participantes,
       // na orientação só vale quem foi informado (o cadastro inteiro não é convocado)
-      ata.meta.tipo === 'orientacao' ? [] : settings?.pessoas ?? [],
+      ata.meta.responsavel || ata.meta.tipo === 'orientacao' ? [] : settings?.pessoas ?? [],
       [quemOrienta(ata.meta), quemLavra(ata.meta), ...listarOrientados(ata.meta)],
     ) : []),
     [ata, settings],
