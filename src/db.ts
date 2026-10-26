@@ -27,14 +27,18 @@ export const db = new AtasDB()
 
 export async function getSettings(): Promise<Settings> {
   const row = await db.settings.get('main')
-  return { ...SETTINGS_PADRAO, ...row?.value }
+  const s = { ...SETTINGS_PADRAO, ...row?.value }
+  if (typeof s.escola !== 'string' || !s.escola.trim()) s.escola = SETTINGS_PADRAO.escola
+  return s
 }
+const avisarConfiguracoes = () => { if (typeof window !== 'undefined') window.dispatchEvent(new Event('configuracoes-alteradas')) }
 export async function saveSettings(value: Settings) {
   await db.transaction('rw', db.settings, async () => {
     const atual = await getSettings()
     const ultimoBackupEm = Math.max(atual.ultimoBackupEm ?? 0, value.ultimoBackupEm ?? 0) || undefined
-    await db.settings.put({ id: 'main', value: { ...value, ultimoBackupEm } })
+    await db.settings.put({ id: 'main', value: { ...value, escola: value.escola.trim() ? value.escola : SETTINGS_PADRAO.escola, ultimoBackupEm } })
   })
+  avisarConfiguracoes()
 }
 
 export async function listAtas(): Promise<AtaRecord[]> {
@@ -123,7 +127,7 @@ const regraAta = objeto({
 }, ['erro', 'audioNome', 'transcript', 'provedorTranscricao', 'modeloTranscricao', 'provedorRedacao', 'modeloRedacao',
   'extraida', 'renderizada', 'textoEditado', 'convocados'])
 const camposSettings: Record<string, Regra> = {
-  escola: 'texto', rede: 'texto', municipioUf: 'texto', local: 'texto', pessoas: lista(pessoa), glossario: 'texto',
+  escola: 'texto', logoEscola: 'texto', rede: 'texto', municipioUf: 'texto', local: 'texto', pessoas: lista(pessoa), glossario: 'texto',
   assuntosExtras: objeto({ pedagogica: lista('texto'), pais: lista('texto'),
     orientacao_aluno: lista('texto'), orientacao_funcionario: lista('texto') },
   ['pedagogica', 'pais', 'orientacao_aluno', 'orientacao_funcionario']),
@@ -171,6 +175,9 @@ export function validarBackup(entrada: unknown): BackupAtas {
     throw new Error('Backup inválido: data de criação ausente ou inválida.')
   }
   const configuracoes = lerCampo(b.configuracoes, objeto(camposSettings, Object.keys(camposSettings)), 'configurações') as BackupAtas['configuracoes']
+  if (configuracoes.logoEscola && (configuracoes.logoEscola.length > 1_500_000 || !/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(configuracoes.logoEscola))) {
+    throw new Error('Backup inválido: a logo da escola deve ser uma imagem PNG incorporada. Nenhum dado foi alterado.')
+  }
   const atas = lerCampo(b.atas, lista(regraAta), 'atas') as AtaRecord[]
   const ids = new Set<string>()
   for (const ata of atas) {
@@ -205,7 +212,7 @@ export function precisaBackup(quantidadeAtas: number, ultimoBackupEm?: number, a
 export async function restaurarBackup(entrada: unknown, opcoes: OpcoesRestauracao): Promise<number> {
   const backup = validarBackup(entrada)
   if (!['juntar', 'substituir'].includes(opcoes.modo)) throw new Error('Escolha como restaurar as atas.')
-  return db.transaction('rw', db.settings, db.atas, db.audios, db.sessoesGravacao, db.pedacosGravacao, async () => {
+  const importadas = await db.transaction('rw', db.settings, db.atas, db.audios, db.sessoesGravacao, db.pedacosGravacao, async () => {
     const atuais = await getSettings()
     if (opcoes.modo === 'substituir') {
       await db.atas.clear()
@@ -235,4 +242,6 @@ export async function restaurarBackup(entrada: unknown, opcoes: OpcoesRestauraca
     await db.settings.put({ id: 'main', value: configuracoes })
     return importadas
   })
+  avisarConfiguracoes()
+  return importadas
 }

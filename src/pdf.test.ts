@@ -116,3 +116,21 @@ describe('cargoDaAssinatura', () => {
 function ata0(): AtaRenderizada {
   return { titulo: 'ATA Nº 1/2026 – REUNIÃO DE PAIS E RESPONSÁVEIS', cabecalho: ['Escola'], texto: 'Texto.', assinaturas: [], pendencias: [] }
 }
+
+import logoPadrao from './assets/logo-escola.png?inline'
+
+describe('identidade visual no PDF', () => {
+  it('coloca a logo padrão antes do nome da escola, centralizada em caixa de cerca de 2,5 cm', () => {
+    const documento = montarDocumento(ata, ata.texto)
+    expect(documento.content[0]).toMatchObject({ image: logoPadrao, fit: [71, 71], alignment: 'center' })
+    expect(documento.content[1]).toMatchObject({ text: 'Escola Municipal Teste' })
+    expect(logoPadrao).toMatch(/^data:image\/png;base64,/)
+  })
+  it('aceita logo personalizada e mantém a proporção com fit', async () => {
+    // Usa uma imagem PNG RGB válida, sem requisição ou dependência de canvas no teste.
+    const logo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAGCAIAAAB4jOjWAAAAFElEQVR4nGMU1/VkIASYCKoYpIoAfwwAmdcr8XwAAAAASUVORK5CYII='
+    const documento = montarDocumento(ata, ata.texto, metaBase, logo)
+    expect(documento.content[0]).toMatchObject({ image: logo, fit: [71, 71] })
+    expect(String.fromCharCode(...(await gerarPdfBytes(ata, ata.texto, metaBase, logo)).slice(0, 5))).toBe('%PDF-')
+  })
+})

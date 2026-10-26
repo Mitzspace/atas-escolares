@@ -3,6 +3,7 @@ import { usaListaAnexa } from './ata-api'
 import { vinculoAnonimo } from './pessoas'
 // larguras (AFM Times-Roman, 1/1000 em) embutidas no próprio pdfmake
 import timesContainer from 'pdfmake/build/standard-fonts/Times'
+import logoPadraoPng from './assets/logo-escola.png?inline'
 
 export const PAGE_W = 595.28
 export const MARGENS = { esq: 85, dir: 57, topo: 62, base: 62 } // ABNT-like
@@ -130,7 +131,7 @@ function anexoDePresenca(ata: AtaRenderizada, meta: MeetingMetadata) {
   ]
 }
 
-export function montarDocumento(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata) {
+export function montarDocumento(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata, logo?: string) {
   const anexo = meta && temAnexoDePresenca(meta)
   const responsaveis = new Set(responsaveisPresentes(meta).map(p => chaveNome(p.nome)))
   // com anexo, os responsáveis assinam só na lista; no corpo ficam os demais
@@ -145,6 +146,7 @@ export function montarDocumento(ata: AtaRenderizada, textoFinal: string, meta?: 
       margin: [MARGENS.esq, 24, MARGENS.dir, 0] as [number, number, number, number],
     }),
     content: [
+      { image: logo || logoPadraoPng, fit: [71, 71] as [number, number], alignment: 'center' as const, margin: [0, 0, 0, 10] as [number, number, number, number] },
       ...ata.cabecalho.filter(Boolean).map((l, i) => ({ text: l, alignment: 'center' as const, bold: i === 0, lineHeight: 1.2 })),
       { text: ata.titulo, alignment: 'center' as const, bold: true, margin: [0, 18, 0, 14] as [number, number, number, number] },
       { text: preencherComTracos(textoFinal), alignment: 'justify' as const },
@@ -161,14 +163,14 @@ async function carregarPdfMake() {
   return pdfMake
 }
 
-export async function gerarPdfBytes(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata): Promise<Uint8Array> {
+export async function gerarPdfBytes(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata, logo?: string): Promise<Uint8Array> {
   const pdfMake = await carregarPdfMake()
-  const buf = await pdfMake.createPdf(montarDocumento(ata, textoFinal, meta) as never).getBuffer()
+  const buf = await pdfMake.createPdf(montarDocumento(ata, textoFinal, meta, logo) as never).getBuffer()
   return new Uint8Array(buf)
 }
 
-export async function gerarPdfBlob(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata): Promise<Blob> {
-  return new Blob([(await gerarPdfBytes(ata, textoFinal, meta)) as BlobPart], { type: 'application/pdf' })
+export async function gerarPdfBlob(ata: AtaRenderizada, textoFinal: string, meta?: MeetingMetadata, logo?: string): Promise<Blob> {
+  return new Blob([(await gerarPdfBytes(ata, textoFinal, meta, logo)) as BlobPart], { type: 'application/pdf' })
 }
 
 export function nomeArquivo(ata: AtaRenderizada): string {

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="titulo descricao">
+  <title id="titulo">E.M. Professora Luiza Maria</title>
+  <desc id="descricao">Escudo com as iniciais LM e um livro aberto, símbolo de conhecimento e acolhimento.</desc>
+  <path d="M256 30C190 30 124 48 74 79v173c0 105 76 185 182 230 106-45 182-125 182-230V79C388 48 322 30 256 30Z" fill="#fff" stroke="#172d49" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M102 97c45-25 98-39 154-39s109 14 154 39" fill="none" stroke="#b68a35" stroke-width="10" stroke-linecap="round"/>
+  <g fill="#172d49">
+    <path d="M152 116h22v96h56v22h-78Z"/>
+    <path d="M246 234V116h24l32 57 32-57h24v118h-22v-78l-34 58-34-58v78Z"/>
+  </g>
+  <path d="M256 286c-37-27-80-36-128-30v95c47-7 91 2 128 30 37-28 81-37 128-30v-95c-48-6-91 3-128 30Z" fill="#fff" stroke="#172d49" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M256 286v95M151 283c27-1 52 5 75 17m-75 14c27-1 52 5 75 17m135-48c-27-1-52 5-75 17m75 14c-27-1-52 5-75 17" fill="none" stroke="#172d49" stroke-width="9" stroke-linecap="round"/>
+  <path d="m242 425 14-14 14 14-14 14Z" fill="#b68a35"/>
+</svg>

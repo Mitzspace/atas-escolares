@@ -40,6 +40,8 @@ export type Settings = {
   apiKey: string
   modelo: string
   escola: string
+  /** PNG normalizado (até 512 px) como dataURL; vazio usa a identidade padrão. */
+  logoEscola?: string
   rede: string
   municipioUf: string
   local: string
@@ -59,7 +61,8 @@ export const SETTINGS_PADRAO: Settings = {
   modeloTranscricaoGroq: MODELOS_TRANSCRICAO_GROQ[0].id,
   apiKey: '',
   modelo: MODELO_PADRAO,
-  escola: '',
+  escola: 'Escola Municipal Professora Luiza Maria',
+  logoEscola: '',
   rede: '',
   municipioUf: '',
   local: 'sala dos professores',

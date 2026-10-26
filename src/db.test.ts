@@ -45,3 +45,15 @@ it('persiste provedor e modelo de cada etapa sem mudar o índice do banco', asyn
   expect(await getAta('origens')).toMatchObject({ ...registro, atualizadaEm: expect.any(Number) })
   await deleteAta('origens')
 })
+
+it('usa o nome da escola em instalações novas e cadastros antigos vazios, preservando nomes personalizados', async () => {
+  const { db } = await import('./db')
+  await db.settings.clear()
+  expect((await getSettings()).escola).toBe('Escola Municipal Professora Luiza Maria')
+  await db.settings.put({ id: 'main', value: { ...SETTINGS_PADRAO, escola: '   ' } })
+  expect((await getSettings()).escola).toBe(SETTINGS_PADRAO.escola)
+  await saveSettings({ ...SETTINGS_PADRAO, escola: 'Escola escolhida pela diretora' })
+  expect((await getSettings()).escola).toBe('Escola escolhida pela diretora')
+  await saveSettings({ ...SETTINGS_PADRAO, escola: '' })
+  expect((await getSettings()).escola).toBe(SETTINGS_PADRAO.escola)
+})

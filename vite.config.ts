@@ -11,7 +11,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg'],
+      includeAssets: ['icon.svg', 'logo-escola.svg'],
       manifest: {
         name: 'Atas Escolares',
         short_name: 'Atas',

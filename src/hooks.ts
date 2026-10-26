@@ -15,7 +15,13 @@ export function useAta(id: string | undefined) {
 
 export function useSettings() {
   const [s, setS] = useState<Settings | null>(null)
-  useEffect(() => { getSettings().then(setS) }, [])
+  useEffect(() => {
+    let vivo = true
+    const atualizar = () => { getSettings().then(valor => { if (vivo) setS(valor) }) }
+    atualizar()
+    window.addEventListener('configuracoes-alteradas', atualizar)
+    return () => { vivo = false; window.removeEventListener('configuracoes-alteradas', atualizar) }
+  }, [])
   return [s, setS] as const
 }
 

@@ -147,3 +147,22 @@ it('lembra backup após sete dias ou nunca; só registra a data após exportaç�
   expect((await getSettings()).ultimoBackupEm).toBe(data)
   expect(precisaBackup(1, data)).toBe(false)
 })
+
+it('inclui logo personalizada no backup e só a substitui quando autorizar configurações', async () => {
+  const logo = 'data:image/png;base64,iVBORw0KGgo='
+  await saveSettings({ ...SETTINGS_PADRAO, logoEscola: logo })
+  const b = await criarBackup()
+  expect(b.configuracoes.logoEscola).toBe(logo)
+  await saveSettings({ ...SETTINGS_PADRAO, logoEscola: '' })
+  await restaurarBackup(b, juntar)
+  expect((await getSettings()).logoEscola).toBe('')
+  await restaurarBackup(b, { ...juntar, substituirConfiguracoes: true })
+  expect((await getSettings()).logoEscola).toBe(logo)
+  const antigo = { ...b, configuracoes: { escola: '' } }
+  await restaurarBackup(antigo, { ...juntar, substituirConfiguracoes: true })
+  expect(await getSettings()).toMatchObject({ escola: SETTINGS_PADRAO.escola, logoEscola: '' })
+})
+
+it.each(['https://exemplo.invalid/logo.png', 'data:image/svg+xml,<svg/>', `data:image/png;base64,${'A'.repeat(1_500_000)}`])('recusa logo externa, SVG não rasterizado ou imagem excessiva no backup', logoEscola => {
+  expect(() => validarBackup({ ...backup(), configuracoes: { logoEscola } })).toThrow(/logo da escola/)
+})

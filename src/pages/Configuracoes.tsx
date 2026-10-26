@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Backup from '../components/Backup'
+import LogoEscola from '../components/LogoEscola'
 import { adicionarExtra, ASSUNTOS_PADRAO, CHAVES_ASSUNTOS, removerExtra, ROTULOS_ASSUNTOS, type ChaveAssuntos } from '../assuntos'
 import { getSettings, saveSettings } from '../db'
 import { testarChave } from '../gemini'
@@ -93,7 +94,11 @@ export default function Configuracoes() {
       </section>
 
       <section className="card space-y-3">
-        <h2 className="font-semibold">Escola</h2>
+        <h2 className="font-semibold">Identidade da escola</h2>
+        <LogoEscola logo={s.logoEscola} onTrocar={async logoEscola => {
+          await saveSettings({ ...await getSettings(), logoEscola })
+          setS(atual => atual ? { ...atual, logoEscola } : atual)
+        }} />
         <div><label className="label" htmlFor="escola">Nome da escola</label><input id="escola" className="field" value={s.escola} onChange={e => up({ escola: e.target.value })} /></div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div><label className="label" htmlFor="rede">Rede</label><input id="rede" className="field" value={s.rede} onChange={e => up({ rede: e.target.value })} /></div>
