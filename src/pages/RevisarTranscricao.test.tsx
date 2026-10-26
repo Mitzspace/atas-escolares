@@ -2,15 +2,17 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { getAta, patchAta } from '../db'
+import { getAta, getSettings, patchAta } from '../db'
 import RevisarTranscricao from './RevisarTranscricao'
+import { SETTINGS_PADRAO } from '../types'
 
-vi.mock('../db', () => ({ getAta: vi.fn(), patchAta: vi.fn() }))
+vi.mock('../db', () => ({ getAta: vi.fn(), getSettings: vi.fn(), patchAta: vi.fn() }))
 let container: HTMLDivElement
 let root: Root
 beforeEach(() => {
   vi.useFakeTimers(); vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.mocked(patchAta).mockResolvedValue()
+  vi.mocked(getSettings).mockResolvedValue(SETTINGS_PADRAO)
   vi.mocked(getAta).mockResolvedValue({
     id: 'teste', criadaEm: 0, atualizadaEm: 0, status: 'transcricao', provedorTranscricao: 'groq', modeloTranscricao: 'whisper-large-v3',
     meta: {

@@ -16,9 +16,12 @@ type Props = {
   arquivo: File | null
   /** `sessaoId` vem preenchido quando o arquivo é uma gravação feita aqui (para apagar os pedaços depois de usar) */
   onChange: (arquivo: File | null, sessaoId?: string) => void
+  compacto?: boolean
+  onTempo?: (ms: number) => void
+  onAndamento?: (gravando: boolean) => void
 }
 
-export default function Gravador({ arquivo, onChange }: Props) {
+export default function Gravador({ arquivo, onChange, compacto, onTempo, onAndamento }: Props) {
   const [modo, setModo] = useState<Modo>('gravar')
   const [fase, setFase] = useState<Fase>('ocioso')
   const [ms, setMs] = useState(0)
@@ -45,6 +48,8 @@ export default function Gravador({ arquivo, onChange }: Props) {
   const faseRef = useRef<Fase>('ocioso')
   faseRef.current = fase
   const emAndamento = fase === 'gravando' || fase === 'pausado'
+  useEffect(() => { onTempo?.(ms) }, [ms, onTempo])
+  useEffect(() => { onAndamento?.(emAndamento) }, [emAndamento, onAndamento])
 
   const tempoAtual = () => acumulado.current + (inicioSeg.current ? Date.now() - inicioSeg.current : 0)
 
@@ -247,8 +252,8 @@ export default function Gravador({ arquivo, onChange }: Props) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-2 rounded-2xl border border-rule bg-slate-50 p-2 sm:grid-cols-2" role="group" aria-label="Como enviar o áudio">
+    <div className={compacto && emAndamento ? 'sticky top-2 z-20 space-y-3 rounded-2xl border border-blue-300 bg-white p-3 shadow-lg' : 'space-y-4'}>
+      {!(compacto && emAndamento) && <div className="grid gap-2 rounded-2xl border border-rule bg-slate-50 p-2 sm:grid-cols-2" role="group" aria-label="Como enviar o áudio">
         {([['gravar', 'Gravar agora'], ['arquivo', 'Enviar arquivo']] as const).map(([m, rot]) => (
           <button
             key={m} type="button" aria-pressed={modo === m} disabled={emAndamento}
@@ -256,7 +261,7 @@ export default function Gravador({ arquivo, onChange }: Props) {
             className={modo === m ? 'btn-primary' : 'btn-secondary'}
           ><svg aria-hidden="true" className="shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{m === 'gravar' ? <><rect x="9" y="2" width="6" height="13" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" /></> : <path d="M3 6h7l2 3h9v12H3zM3 6V3h7l2 3h9v3" />}</svg>{rot}</button>
         ))}
-      </div>
+      </div>}
 
       {modo === 'arquivo' && (
         <div className="space-y-2">
@@ -288,12 +293,12 @@ export default function Gravador({ arquivo, onChange }: Props) {
             </div>
           ))}
 
-          {fase !== 'pronto' && (
+          {fase !== 'pronto' && !(compacto && emAndamento) && (
             <p className="rounded-xl border border-rule bg-slate-50 p-4 text-base text-slate-700">{AVISO_TELA}</p>
           )}
 
-          <div className={`recorder-clock ${fase === 'gravando' ? 'border-red-200 bg-red-50/50' : 'border-rule bg-slate-50'}`}>
-            <div className="recorder-time" aria-live="off" aria-label={`Tempo gravado ${formatarTempo(ms)}`}>{formatarTempo(ms)}</div>
+          <div className={`${compacto && emAndamento ? 'rounded-xl px-3 py-2' : 'recorder-clock'} ${fase === 'gravando' ? 'border-red-200 bg-red-50/50' : 'border-rule bg-slate-50'}`}>
+            <div className={compacto && emAndamento ? 'text-center text-2xl font-semibold tabular-nums' : 'recorder-time'} aria-live="off" aria-label={`Tempo gravado ${formatarTempo(ms)}`}>{formatarTempo(ms)}</div>
             <p className="mt-1 text-sm text-slate-600" aria-live="polite">
               {fase === 'gravando' && <><span className="recording-dot" aria-hidden="true" /><span className="font-semibold text-red-800">Gravando</span></>}
               {fase === 'pausado' && 'Pausado'}

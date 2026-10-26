@@ -1,8 +1,9 @@
 import { useEffect, useId, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import type { TranscriptSegment } from '../ata-api'
+import { quemLavra, quemOrienta, ehFalanteGenerico, type TranscriptSegment } from '../ata-api'
 import { patchAta } from '../db'
-import { useAta, useDebouncedEffect } from '../hooks'
+import { useAta, useDebouncedEffect, useSettings } from '../hooks'
+import { identificarFalantes } from '../provedores'
 
 export default function RevisarTranscricao() {
   const { id = '' } = useParams()
@@ -11,6 +12,9 @@ export default function RevisarTranscricao() {
   const [ata] = useAta(id)
   const [segs, setSegs] = useState<TranscriptSegment[] | null>(null)
   const [salvo, setSalvo] = useState(true)
+  const [settings] = useSettings()
+  const [identificando, setIdentificando] = useState(false)
+  const [mensagem, setMensagem] = useState('')
 
   useEffect(() => { if (ata?.transcript) setSegs(ata.transcript) }, [ata])
   useDebouncedEffect(() => {
@@ -31,6 +35,21 @@ export default function RevisarTranscricao() {
     nav(`/ata/${id}/processando/ata`)
   }
 
+  async function identificar() {
+    if (!settings || !segs || !ata || identificando) return
+    setIdentificando(true); setMensagem('Identificando quem falou…')
+    try {
+      await patchAta(id, { transcript: segs })
+      const resultado = await identificarFalantes(segs, ata.meta.participantes, { settings, meta: ata.meta,
+        onProgress: rotulo => setMensagem(rotulo) })
+      setSegs(resultado.dados)
+      await patchAta(id, { transcript: resultado.dados })
+      setSalvo(true)
+      setMensagem(`${resultado.identificados} trechos identificados. Confira os nomes; o que não for inequívoco permanece como Falante não identificado.`)
+    } catch (e) { setMensagem((e as Error).message) }
+    finally { setIdentificando(false) }
+  }
+
   return (
     <div className="space-y-5">
       <h1 className="text-xl font-semibold">Revisar a transcrição</h1>
@@ -40,9 +59,13 @@ export default function RevisarTranscricao() {
       </p>
 
       {ata.provedorTranscricao && <p className="text-sm text-slate-600">Transcrição: {ata.provedorTranscricao === 'groq' ? 'Groq' : 'Gemini'} · {ata.modeloTranscricao}</p>}
-      {ata.provedorTranscricao === 'groq' && <p role="status" className="card border-blue-200 bg-blue-50 text-blue-900">O Whisper não separa falantes. “Falante” não significa que todos os trechos sejam da mesma pessoa. Atribua o nome em cada trecho quando souber quem falou.</p>}
+      {ata.provedorTranscricao === 'groq' && <p role="status" className="card border-blue-200 bg-blue-50 text-blue-900">O Whisper não separa falantes. A identificação por contexto só atribui nomes quando houver evidência. Confira cada trecho; “Falante não identificado” pode representar pessoas diferentes.</p>}
+      <section className="card space-y-3"><h2>Falantes identificados</h2><p>{falantes.filter(f => !ehFalanteGenerico(f)).join(' · ') || 'Nenhum nome identificado com segurança.'}</p><p className="text-sm text-slate-600">{segs.filter(s => ehFalanteGenerico(s.speaker)).length} trecho(s) para atribuir manualmente.</p>
+        <button className="btn-secondary w-full" disabled={identificando || !settings || (!settings.apiKey && !settings.groqApiKey)} onClick={identificar}>Identificar de novo com IA</button>
+        {mensagem && <p role="status">{mensagem}</p>}
+      </section>
       <datalist id={listaFalantesId}>
-        {[...new Set([ata.meta.presidente.nome, ata.meta.secretario.nome, ...ata.meta.participantes.map(p => p.nome)])].filter(Boolean).map(nome => <option key={nome} value={nome} />)}
+        {[...new Set([quemOrienta(ata.meta).nome, quemLavra(ata.meta).nome, ...ata.meta.participantes.map(p => p.nome)])].filter(Boolean).map(nome => <option key={nome} value={nome} />)}
       </datalist>
       <section className="card space-y-3">
         <h2 className="font-semibold">Renomear falante em todos os trechos</h2>
@@ -59,12 +82,12 @@ export default function RevisarTranscricao() {
               <button className="btn-danger shrink-0 px-3" onClick={() => mudar(segs.filter((_, j) => j !== i))} aria-label="Remover trecho">Remover</button>
             </div>
             <label className="block"><span className="label">Quem falou neste trecho</span>
-              <input className="field" list={listaFalantesId} aria-label={`Falante do trecho ${i + 1}`} value={s.speaker}
+              <input className="field" disabled={identificando} list={listaFalantesId} aria-label={`Falante do trecho ${i + 1}`} value={s.speaker}
                 onChange={e => mudar(segs.map((x, j) => j === i ? { ...x, speaker: e.target.value } : x))}
                 onBlur={() => { if (!s.speaker.trim()) mudar(segs.map((x, j) => j === i ? { ...x, speaker: 'Falante' } : x)) }} />
             </label>
             <textarea
-              aria-label={`Trecho de ${s.speaker}, ${s.start} a ${s.end}`} className="field" rows={Math.max(2, Math.ceil(s.text.length / 45))}
+              disabled={identificando} aria-label={`Trecho de ${s.speaker}, ${s.start} a ${s.end}`} className="field" rows={Math.max(2, Math.ceil(s.text.length / 45))}
               value={s.text} onChange={e => mudar(segs.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
             />
           </li>
@@ -72,7 +95,7 @@ export default function RevisarTranscricao() {
       </ul>
 
       <div className="action-bar">
-        <div className="mx-auto max-w-3xl"><button className="btn-primary w-full" onClick={gerar}>Gerar a ata</button></div>
+        <div className="mx-auto max-w-3xl"><button className="btn-primary w-full" disabled={identificando} onClick={gerar}>Gerar a ata</button></div>
       </div>
     </div>
   )

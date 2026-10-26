@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { TIPOS_ATA, type MeetingMetadata, type Participante, type Pessoa, type TipoAta } from '../ata-api'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { TIPOS_ATA, listarOrientados, type Anotacao, type ModoRegistro, type MeetingMetadata, type Participante, type Pessoa, type TipoAta } from '../ata-api'
 import AssuntosSugeridos from '../components/AssuntosSugeridos'
 import Gravador from '../components/Gravador'
 import { assuntosSugeridos, chavesDeAssuntos } from '../assuntos'
-import { apagarSessaoGravacao, getSettings, novoId, proximoNumero, saveAta, saveAudio, saveSettings } from '../db'
+import { apagarSessaoGravacao, getAta, getAudio, getSettings, novoId, proximoNumero, saveAta, saveAudio, saveSettings } from '../db'
 import { mimeDoAudio } from '../gemini'
 import { vinculoDoResponsavel, type TratamentoAluno } from '../pessoas'
 import type { Settings } from '../types'
+import { usarTextoComoEsta } from '../pipeline'
 
 type Part = Pessoa & { presente: boolean }
 type Aluno = { nome: string; turma: string; foco?: boolean }
@@ -27,6 +28,15 @@ const TAMANHO_MAX_MB = 200
 
 export default function NovaAta() {
   const nav = useNavigate()
+  const [parametros] = useSearchParams()
+  const [idRegistro] = useState(() => parametros.get('rascunho') || novoId())
+  const criadaEm = useRef(Date.now())
+  const [modoRegistro, setModoRegistro] = useState<ModoRegistro>('audio')
+  const [anotacoes, setAnotacoes] = useState<Anotacao[]>([{ texto: '' }])
+  const [tempoMs, setTempoMs] = useState(0)
+  const [gravando, setGravando] = useState(false)
+  const [salvoAutomatico, setSalvoAutomatico] = useState(false)
+  const rotaRascunho = useRef(!!parametros.get('rascunho'))
   const [cfg, setCfg] = useState<Settings | null>(null)
   const [tipo, setTipo] = useState<TipoAta | null>(null)
   const [ordinaria, setOrdinaria] = useState(true)
@@ -57,6 +67,32 @@ export default function NovaAta() {
       setGlossario(s.glossario)
       setParts(s.pessoas.map(p => ({ ...p, presente: true })))
       setNumero(await proximoNumero(new Date().getFullYear()))
+      if (parametros.has('rascunho')) {
+        const a = await getAta(idRegistro)
+        if (!a) return
+        if (a.renderizada || a.finalizadaEm) { nav(`/ata/${a.id}/revisar`, { replace: true }); return }
+        const m = a.meta
+        criadaEm.current = a.criadaEm
+        setTipo(m.tipo ?? 'pedagogica'); setOrdinaria(m.ordinaria ?? true); setNumero(m.numero); setData(m.data)
+        setHoraInicio(m.horaInicio); setHoraFim(m.horaFim ?? ''); setLocal(m.local)
+        setPresidente(m.presidente ?? m.responsavel ?? { nome: '', cargo: '' }); setSecretario(m.secretario ?? m.responsavel ?? { nome: '', cargo: '' })
+        setMesmaPessoa(!!m.presidente?.nome.trim() && chaveNome(m.presidente.nome) === chaveNome(m.secretario?.nome ?? ''))
+        setPauta(m.pauta.length ? m.pauta : ['']); setAnonimizar(m.anonimizarAlunos); setGlossario((m.glossario ?? []).join('\n'))
+        setModoRegistro(a.modoRegistro ?? 'audio'); setAnotacoes(a.anotacoes?.length ? a.anotacoes : [{ texto: '' }])
+        setParts(m.participantes.filter(p => !p.categoria || p.categoria === 'funcionario'))
+        setAlunos(m.participantes.filter(p => p.categoria === 'aluno').map(p => ({ nome: p.nome, turma: p.vinculo ?? '' })))
+        setResponsaveis(m.participantes.filter(p => p.categoria === 'responsavel').map(p => {
+          const v = (p.vinculo ?? '').replace(/^alun[oa](?:\(a\))?\s+/i, '').split(',')
+          return { nome: p.nome, parentesco: PARENTESCOS.includes(p.cargo as Parentesco) ? p.cargo as Parentesco : 'Responsável', aluno: v[0] ?? '', turma: v.slice(1).join(',').trim(), tratamento: p.vinculo?.startsWith('aluna ') ? 'aluna' : 'aluno(a)' }
+        }))
+        setOrientados(listarOrientados(m).map((o, i) => {
+          const r = m.participantes.find(p => p.categoria === 'responsavel' && p.vinculo?.includes(o.nome))
+          return { id: i + 1, tipo: o.categoria === 'aluno' ? 'aluno' : 'funcionario', nome: o.nome, cargo: o.cargo, turma: o.vinculo ?? '', respNome: r?.nome ?? '', respParentesco: r && PARENTESCOS.includes(r.cargo as Parentesco) ? r.cargo as Parentesco : 'Mãe' }
+        }))
+        const audioSalvo = await getAudio(a.id)
+        if (audioSalvo) setAudio(new File([audioSalvo.blob], audioSalvo.nome, { type: audioSalvo.mimeType }))
+        setSalvoAutomatico(true)
+      }
     })
   }, [])
 
@@ -74,25 +110,8 @@ export default function NovaAta() {
     setOrdinaria(t !== 'orientacao')
   }
 
-  async function enviar(e: React.FormEvent) {
-    e.preventDefault()
-    setErro('')
-    if (!audio) return setErro('Grave ou envie o áudio da reunião.')
-    try { mimeDoAudio(audio) } catch (x) { return setErro((x as Error).message) }
-    if (audio.size > TAMANHO_MAX_MB * 1024 * 1024) return setErro(`O arquivo tem mais de ${TAMANHO_MAX_MB} MB. Envie um áudio menor (ou em mp3/m4a).`)
-    if (!cfg?.escola.trim()) return setErro('Cadastre o nome da escola em Configurações antes de criar a ata.')
+  function dadosAtuais() {
     const quemLavrou = mesmaPessoa ? presidente : secretario
-    if (!presidente.nome.trim() || !quemLavrou.nome.trim()) return setErro(tipo === 'orientacao'
-      ? 'Informe quem orienta e quem lavrou a ata.'
-      : 'Informe quem presidiu a reunião e quem secretariou (lavrou a ata).')
-    if (!horaInicio) return setErro('Informe a hora de início.')
-    if (tipo === 'orientacao') {
-      if (!orientados.length) return setErro('Adicione pelo menos uma pessoa que recebe a orientação.')
-      const func = orientados.find(o => o.tipo === 'funcionario' && (!o.nome.trim() || !o.cargo.trim()))
-      if (func) return setErro('Informe o nome e o cargo de cada funcionário que recebe a orientação.')
-      if (orientados.some(o => o.tipo === 'aluno' && !o.nome.trim())) return setErro('Informe o nome de cada aluno que recebe a orientação.')
-    }
-
     const funcionarios: Participante[] = tipo === 'orientacao' ? [] : parts.filter(p => p.nome.trim())
       .map(p => ({ nome: p.nome.trim(), cargo: p.cargo.trim(), presente: p.presente, categoria: 'funcionario' as const }))
     const extras: Participante[] = []
@@ -116,7 +135,7 @@ export default function NovaAta() {
       }
     }
     const meta: MeetingMetadata = {
-      escola: cfg.escola.trim(), rede: cfg.rede.trim(), municipioUf: cfg.municipioUf.trim(), tipo: tipo!, ordinaria,
+      escola: cfg!.escola.trim(), rede: cfg!.rede.trim(), municipioUf: cfg!.municipioUf.trim(), tipo: tipo!, ordinaria,
       numero, ano: Number(data.slice(0, 4)), data, horaInicio, horaFim: horaFim || undefined, local: local.trim(),
       presidente, secretario: quemLavrou,
       participantes: [...funcionarios, ...extras],
@@ -125,8 +144,50 @@ export default function NovaAta() {
       anonimizarAlunos: anonimizar,
       glossario: glossario.split('\n').map(x => x.trim()).filter(Boolean),
     }
+    return { meta, funcionarios, listaOrientados }
+  }
+
+  useEffect(() => {
+    if (!cfg || !tipo || modoRegistro === 'audio' || salvando || !anotacoes.some(a => a.texto.trim())) return
+    let vivo = true
+    setSalvoAutomatico(false)
+    const timer = setTimeout(() => {
+      void saveAta({ id: idRegistro, criadaEm: criadaEm.current, atualizadaEm: Date.now(), status: 'rascunho',
+        meta: dadosAtuais().meta, modoRegistro, anotacoes: anotacoes.filter(a => a.texto.trim()) })
+        .then(() => {
+          if (!vivo) return
+          setSalvoAutomatico(true)
+          if (!rotaRascunho.current) { rotaRascunho.current = true; nav(`/nova?rascunho=${idRegistro}`, { replace: true }) }
+        }).catch(() => { if (vivo) setErro('Não foi possível guardar as anotações neste aparelho. Confira o espaço disponível antes de sair.') })
+    }, 600)
+    return () => { vivo = false; clearTimeout(timer) }
+  }, [cfg, tipo, modoRegistro, anotacoes, ordinaria, numero, data, horaInicio, horaFim, local, presidente, secretario, mesmaPessoa, parts, alunos, responsaveis, orientados, pauta, anonimizar, glossario, salvando, idRegistro, nav])
+
+  async function enviar(e: React.FormEvent) {
+    e.preventDefault()
+    setErro('')
+    if (modoRegistro !== 'digitar') {
+      if (!audio) return setErro('Grave ou envie o áudio da reunião.')
+      try { mimeDoAudio(audio) } catch (x) { return setErro((x as Error).message) }
+      if (audio.size > TAMANHO_MAX_MB * 1024 * 1024) return setErro(`O arquivo tem mais de ${TAMANHO_MAX_MB} MB. Envie um áudio menor (ou em mp3/m4a).`)
+    } else if (!anotacoes.some(a => a.texto.trim())) return setErro('Escreva o texto ou as anotações antes de continuar.')
+    if (!cfg?.escola.trim()) return setErro('Cadastre o nome da escola em Configurações antes de criar a ata.')
+    const quemLavrou = mesmaPessoa ? presidente : secretario
+    if (!presidente.nome.trim() || !quemLavrou.nome.trim()) return setErro(tipo === 'orientacao'
+      ? 'Informe quem orienta e quem lavrou a ata.'
+      : 'Informe quem presidiu a reunião e quem secretariou (lavrou a ata).')
+    if (!horaInicio) return setErro('Informe a hora de início.')
+    if (tipo === 'orientacao') {
+      if (!orientados.length) return setErro('Adicione pelo menos uma pessoa que recebe a orientação.')
+      const func = orientados.find(o => o.tipo === 'funcionario' && (!o.nome.trim() || !o.cargo.trim()))
+      if (func) return setErro('Informe o nome e o cargo de cada funcionário que recebe a orientação.')
+      if (orientados.some(o => o.tipo === 'aluno' && !o.nome.trim())) return setErro('Informe o nome de cada aluno que recebe a orientação.')
+    }
+
+    const { meta, funcionarios, listaOrientados } = dadosAtuais()
     setSalvando(true)
     // só funcionários entram no cadastro (responsáveis e alunos são digitados a cada ata)
+    try {
     const candidatos: Pessoa[] = [...funcionarios, ...listaOrientados.filter(o => o.categoria === 'funcionario')]
     const conhecidos = new Set(cfg!.pessoas.map(p => chaveNome(p.nome)))
     const novos = candidatos.filter(p => {
@@ -136,11 +197,16 @@ export default function NovaAta() {
       return true
     }).map(p => ({ nome: p.nome.trim(), cargo: p.cargo.trim() }))
     if (novos.length) await saveSettings({ ...cfg!, pessoas: [...cfg!.pessoas, ...novos] })
-    const id = novoId()
-    await saveAudio(id, audio)
+    const id = idRegistro
+    if (modoRegistro !== 'digitar' && audio) await saveAudio(id, audio)
     if (sessaoGravacao) await apagarSessaoGravacao(sessaoGravacao)
-    await saveAta({ id, criadaEm: Date.now(), atualizadaEm: Date.now(), status: 'rascunho', meta, audioNome: audio.name })
-    nav(`/ata/${id}/processando/transcricao`, { replace: true })
+    await saveAta({ id, criadaEm: criadaEm.current, atualizadaEm: Date.now(), status: 'rascunho', meta,
+      modoRegistro, anotacoes: modoRegistro === 'audio' ? undefined : anotacoes.filter(a => a.texto.trim()), audioNome: modoRegistro !== 'digitar' ? audio?.name : undefined })
+    if (modoRegistro === 'digitar' && (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'usar') {
+      await usarTextoComoEsta(id, anotacoes.map(a => a.texto).join('\n'))
+      nav(`/ata/${id}/revisar`, { replace: true })
+    } else nav(`/ata/${id}/processando/${modoRegistro === 'digitar' ? 'ata' : 'transcricao'}`, { replace: true })
+    } catch (x) { setErro((x as Error).message); setSalvando(false) }
   }
 
   if (!cfg) return <p className="text-slate-500">Carregando…</p>
@@ -188,9 +254,32 @@ export default function NovaAta() {
         </div>
       )}
 
+      <fieldset className="space-y-3" disabled={gravando || salvando}>
+        <legend className="mb-3 font-document text-xl font-semibold">Como deseja registrar?</legend>
+        <div className="grid gap-3 sm:grid-cols-3">{([
+          ['audio', 'Gravar áudio', 'Grave agora ou envie um arquivo.'],
+          ['digitar', 'Digitar', 'Escreva o texto ou as anotações, mesmo sem internet.'],
+          ['audio_digitar', 'Gravar e digitar', 'Grave enquanto anota nomes, números e decisões.'],
+        ] as const).map(([modo, titulo, descricao]) => <label key={modo} className={`min-h-32 cursor-pointer rounded-xl border p-4 ${modoRegistro === modo ? 'border-blue-800 bg-blue-50' : 'border-rule bg-white'}`}>
+          <span className="flex items-center gap-3 font-semibold"><input type="radio" aria-label={titulo} name="modo-registro" value={modo} checked={modoRegistro === modo} onChange={() => setModoRegistro(modo)} />{titulo}</span>
+          <span className="mt-2 block text-sm text-slate-600">{descricao}</span>
+        </label>)}</div>
+      </fieldset>
       <section className="card space-y-5">
-        <h2 className="font-semibold">Áudio da reunião</h2>
-        <Gravador arquivo={audio} onChange={(f, sessao) => { setAudio(f); setSessaoGravacao(sessao) }} />
+        <h2 className="font-semibold">{modoRegistro === 'digitar' ? 'Texto e anotações da reunião' : 'Registro da reunião'}</h2>
+        {modoRegistro !== 'digitar' && <Gravador compacto={modoRegistro === 'audio_digitar'} onTempo={setTempoMs} onAndamento={setGravando} arquivo={audio} onChange={(f, sessao) => { setAudio(f); setSessaoGravacao(sessao) }} />}
+        {modoRegistro !== 'audio' && <div className="space-y-4">
+          <p className="text-sm text-slate-600">{modoRegistro === 'digitar' ? 'Seu texto fica salvo automaticamente neste aparelho. Ao terminar, organize com IA ou use como está, sem IA.' : 'Registre nomes, números e decisões. As anotações têm prioridade sobre o áudio; divergências aparecerão para confirmar.'}</p>
+          {anotacoes.map((a, i) => <div key={i} className="space-y-2">
+            <label htmlFor={`anotacao-${i}`} className="label">{modoRegistro === 'digitar' ? 'Texto da reunião' : `Anotação ${i + 1}`}{a.tempo && <span className="ml-2 font-mono text-blue-900">[{a.tempo}]</span>}</label>
+            <textarea id={`anotacao-${i}`} className="field min-h-36" rows={modoRegistro === 'digitar' ? 12 : 4} value={a.texto} onChange={e => {
+              const texto = e.target.value
+              setAnotacoes(as => as.map((x, j) => j === i ? { ...x, texto, ...(modoRegistro === 'audio_digitar' && !x.tempo ? { tempo: `${String(Math.floor(tempoMs / 60000)).padStart(2, '0')}:${String(Math.floor(tempoMs / 1000) % 60).padStart(2, '0')}` } : {}) } : x))
+            }} />
+          </div>)}
+          {modoRegistro === 'audio_digitar' && <button type="button" className="btn-secondary w-full" onClick={() => setAnotacoes(as => [...as, { texto: '' }])}>＋ Adicionar anotação</button>}
+          <p className="text-sm text-slate-600" role="status">{salvoAutomatico ? 'Anotações salvas neste aparelho.' : 'As anotações são salvas automaticamente.'}</p>
+        </div>}
       </section>
 
       <section className="card space-y-5">
@@ -376,7 +465,9 @@ export default function NovaAta() {
       </section>
 
       {erro && <div role="alert" className="card border-red-300 bg-red-50 text-red-800">{erro}</div>}
-      <div className="action-bar"><div className="mx-auto max-w-3xl sm:px-8"><button className="btn-primary w-full" disabled={salvando}>{salvando ? 'Salvando…' : 'Transcrever o áudio'}</button></div></div>
+      <div className="action-bar"><div className="mx-auto grid max-w-3xl gap-2 sm:px-8">
+        {modoRegistro === 'digitar' ? <><button type="submit" value="organizar" className="btn-primary w-full" disabled={salvando || (!cfg.apiKey.trim() && !cfg.groqApiKey.trim())}>Organizar com IA</button><button type="submit" value="usar" className="btn-secondary w-full" disabled={salvando}>Usar como está</button></> : <button type="submit" className="btn-primary w-full" disabled={salvando || gravando}>{salvando ? 'Salvando…' : 'Transcrever o áudio'}</button>}
+      </div></div>
     </form>
   )
 }

@@ -67,7 +67,7 @@ export default function Inicio() {
               </div>
               {a.erro && <p className="mt-2 text-sm text-red-700">{a.erro}</p>}
               <div className="mt-5 flex flex-wrap gap-2 border-t border-rule pt-4">
-                <Link to={proximaRota(a.status, a.id)} className="btn-secondary flex-1">
+                <Link to={a.modoRegistro && (a.status === 'rascunho' || (a.status === 'erro' && a.modoRegistro === 'digitar')) ? `/nova?rascunho=${a.id}` : proximaRota(a.status, a.id)} className="btn-secondary flex-1">
                   {a.status === 'ata' ? 'Abrir' : a.status === 'erro' ? 'Tentar de novo' : 'Continuar'}
                 </Link>
                 {a.status === 'ata' && <Link to={`/ata/${a.id}/imprimir`} className="btn-secondary flex-1">Imprimir</Link>}

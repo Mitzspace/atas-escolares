@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { listarOrientados, validateAta } from '../ata-api'
+import { extrairResumo, listarOrientados, quemLavra, quemOrienta, validateAta } from '../ata-api'
 import { finalizarAta, patchAta, reabrirAta } from '../db'
 import { useAta, useDebouncedEffect, useSettings } from '../hooks'
 import { rotuloDoParticipante } from '../pessoas'
@@ -47,12 +47,16 @@ export default function RevisarAta() {
     [ata, texto],
   )
   const marcadores = useMemo(() => (texto ? listarMarcadores(texto) : []), [texto])
+  const resumo = useMemo(() => {
+    if (!ata?.renderizada || texto === null) return null
+    return texto === ata.renderizada.texto ? (ata.resumo ?? extrairResumo(ata.extraida ?? texto, ata.meta)) : extrairResumo(texto, ata.meta)
+  }, [ata, texto])
   const lista = useMemo(
     () => (ata ? listaDePresenca(
       ata.meta.participantes,
       // na orientação só vale quem foi informado (o cadastro inteiro não é convocado)
       ata.meta.tipo === 'orientacao' ? [] : settings?.pessoas ?? [],
-      [ata.meta.presidente, ata.meta.secretario, ...listarOrientados(ata.meta)],
+      [quemOrienta(ata.meta), quemLavra(ata.meta), ...listarOrientados(ata.meta)],
     ) : []),
     [ata, settings],
   )
@@ -121,16 +125,20 @@ export default function RevisarAta() {
 
       {atual.provedorRedacao && <p className="text-sm text-slate-600">Redação: {atual.provedorRedacao === 'groq' ? 'Groq' : 'Gemini'} · {atual.modeloRedacao}</p>}
       <AvisoModeloEconomico modelo={atual.modeloRedacao} />
+      {resumo && <section className="card space-y-4" aria-label="Resumo da reunião">
+        <h2>Resumo para conferir</h2><p className="text-sm text-slate-600">Confira estes pontos com o texto completo antes de finalizar.</p>
+        {([['Assuntos', resumo.assuntos], ['Decisões', resumo.decisoes], ['Encaminhamentos', resumo.encaminhamentos]] as const).map(([titulo, itens]) => <div key={titulo}><h3 className="font-semibold">{titulo}</h3>{itens.length ? <ul className="mt-2 list-disc space-y-2 pl-5">{itens.map((item, i) => <li key={i}>{item}</li>)}</ul> : <p className="mt-2 text-sm text-slate-600">Nenhum registro identificado.</p>}</div>)}
+      </section>}
 
       <section className="card space-y-4">
         <h2 className="font-semibold">Quem estava presente</h2>
         <p className="text-sm text-slate-600">Marque quem compareceu. A abertura, a lista de ausentes e as assinaturas são refeitas na hora.</p>
         <ul className="space-y-3">
-          {(mesmaPessoa(atual.meta.presidente, atual.meta.secretario) ? [atual.meta.presidente] : [atual.meta.presidente, atual.meta.secretario]).map((p, i) => (
+          {(mesmaPessoa(quemOrienta(atual.meta), quemLavra(atual.meta)) ? [quemOrienta(atual.meta)] : [quemOrienta(atual.meta), quemLavra(atual.meta)]).map((p, i) => (
             <li key={`fixo${i}`}>
               <label className="flex min-h-12 items-center gap-3 rounded-xl border border-rule bg-slate-50 p-4">
                 <input type="checkbox" className="size-6 shrink-0 accent-blue-900" checked disabled />
-                <span><b>{p.nome}</b> <span className="text-slate-600">— {p.cargo}</span> <span className="text-xs text-slate-500">({mesmaPessoa(atual.meta.presidente, atual.meta.secretario) ? 'presidiu e lavrou a ata' : i === 0 ? 'presidiu' : 'lavrou a ata'})</span></span>
+                <span><b>{p.nome}</b> <span className="text-slate-600">— {p.cargo}</span> <span className="text-xs text-slate-500">({mesmaPessoa(quemOrienta(atual.meta), quemLavra(atual.meta)) ? 'presidiu e lavrou a ata' : i === 0 ? 'presidiu' : 'lavrou a ata'})</span></span>
               </label>
             </li>
           ))}
