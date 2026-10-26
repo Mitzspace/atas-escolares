@@ -38,13 +38,13 @@ export function larguraTexto(s: string, tamanho = TAMANHO): number {
   return w * tamanho
 }
 
-/** segmentos entre oportunidades de quebra: espaço, ou depois de hífen/barra entre letras */
+/** Hífens pertencem à palavra; só espaços e barras podem iniciar outra linha. */
 function segmentos(texto: string): { palavra: string; espaco: boolean }[] {
   const out: { palavra: string; espaco: boolean }[] = []
   for (const tok of texto.split(/( +)/)) {
     if (!tok) continue
     if (tok.startsWith(' ')) { if (out.length) out[out.length - 1].espaco = true; continue }
-    for (const p of tok.match(/[^-/]*[-/](?=[\p{L}\p{N}])|[^]+/gu) ?? [tok]) out.push({ palavra: p, espaco: false })
+    for (const p of tok.match(/[^/]*\/(?=[\p{L}\p{N}])|[^]+/gu) ?? [tok]) out.push({ palavra: p, espaco: false })
   }
   return out
 }
@@ -68,6 +68,12 @@ export function preencherComTracos(texto: string, largura = LARGURA_TEXTO, taman
   const usada = larguraUltimaLinha(t, largura, tamanho) + larguraTexto(' ', tamanho)
   const n = Math.floor((largura - usada) / larguraTexto('-', tamanho)) - 2
   return n >= 3 ? `${t} ${'-'.repeat(n)}` : t
+}
+
+/** Evita que a justificação trate o hífen como separador, mantendo o ASCII no PDF extraído. */
+export function preservarHifens(texto: string) {
+  return texto.split(/([\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)+)/gu).filter(Boolean)
+    .map(text => /[\p{L}\p{N}]-[\p{L}\p{N}]/u.test(text) ? { text, noWrap: true } : { text })
 }
 
 /**
@@ -149,7 +155,7 @@ export function montarDocumento(ata: AtaRenderizada, textoFinal: string, meta?: 
       { image: logo || logoPadraoPng, fit: [71, 71] as [number, number], alignment: 'center' as const, margin: [0, 0, 0, 10] as [number, number, number, number] },
       ...ata.cabecalho.filter(Boolean).map((l, i) => ({ text: l, alignment: 'center' as const, bold: i === 0, lineHeight: 1.2 })),
       { text: ata.titulo, alignment: 'center' as const, bold: true, margin: [0, 18, 0, 14] as [number, number, number, number] },
-      { text: preencherComTracos(textoFinal), alignment: 'justify' as const },
+      { text: preservarHifens(preencherComTracos(textoFinal)), alignment: 'justify' as const },
       ...assinaturas.map(a => assinatura(a, cargoDaAssinatura(a, meta))),
       ...(anexo ? anexoDePresenca(ata, meta) : []),
     ],
