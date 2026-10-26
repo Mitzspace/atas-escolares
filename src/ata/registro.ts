@@ -62,7 +62,10 @@ const COBERTURA_ANOTACOES =
   'COBERTURA DAS ANOTAÇÕES (obrigatória): as anotações vêm numeradas. CADA anotação deve aparecer no corpo — no relato do item da pauta a que se refere ' +
   '(ou em pauta 0 se não couber), em "deliberacoes" ou em "encaminhamentos" — com os mesmos nomes, números, datas e decisões. ' +
   'Se não souber onde encaixar ou houver dúvida, escreva-a mesmo assim e acrescente [confirmar: Anotação N]. ' +
-  'Nunca omita uma anotação nem deixe um item da pauta como não registrado quando alguma anotação o tratar. Antes de responder, confira que as anotações 1 a N estão todas contempladas.';
+  'Nunca omita uma anotação nem deixe um item da pauta como não registrado quando alguma anotação o tratar. Antes de responder, confira que as anotações 1 a N estão todas contempladas.\n' +
+  'PRECEDÊNCIA: nestes modos, onde as regras de redação falam em "transcrição" (relatar só o que consta, omitir item não tratado, "somente saudação → itens vazios"), as ANOTAÇÕES TAMBÉM SÃO FONTE: o que está nelas consta do registro da reunião e deve ser relatado, mesmo que a transcrição traga só saudações. ' +
+  'Anotações escritas no presente, no futuro ou em tópicos (ex.: "Clara Dias apresentará o calendário", "próximo encontro sexta-feira") viram relato no pretérito perfeito, na terceira pessoa e sem acrescentar fatos (ex.: "Foi informado que Clara Dias apresentaria o calendário e que o próximo encontro seria na sexta-feira"). ' +
+  'Uma anotação sem item da pauta correspondente entra em pauta 0, não em [PENDENTE].';
 
 // ---------------------------------------------------------------- falantes
 
@@ -248,7 +251,11 @@ const unidades = (texto: string) => frases(texto).map(semPonto).filter((f) => li
  * relato do item da pauta com mais palavras em comum, ou num trecho "Conforme anotações registradas durante a reunião, ..."
  * em pauta 0, e viram a pendência "conferir anotação incorporada: ...". Pura: devolve uma cópia.
  */
-export function incorporarAnotacoes(extraida: AtaExtraida, anotacoes: Anotacao[] = []): { extraida: AtaExtraida; incorporadas: string[] } {
+export function incorporarAnotacoes(
+  extraida: AtaExtraida,
+  anotacoes: Anotacao[] = [],
+  meta?: Pick<MeetingMetadata, 'pauta'>,
+): { extraida: AtaExtraida; incorporadas: string[] } {
   const notas = anotacoesValidas(anotacoes);
   if (!notas.length) return { extraida, incorporadas: [] };
   const corpo = new Set(radicais(textoDoCorpo(extraida)));
@@ -279,12 +286,18 @@ export function incorporarAnotacoes(extraida: AtaExtraida, anotacoes: Anotacao[]
   }
   if (soltas.length) {
     const txt = `Conforme anotações registradas durante a reunião, ${soltas.map(minuscula1).join('; ')}.`;
-    const geral = itens.find((i) => i.pauta === 0);
-    if (geral) geral.relato = `${geral.relato.replace(/\s+$/, '')} ${txt}`;
-    else itens.push({ pauta: 0, relato: txt });
+    // com um único item da pauta ainda sem relato, as anotações soltas são dele; senão vão para fora da pauta
+    const vazios = [...Array(meta?.pauta.length ?? 0).keys()].map((k) => k + 1).filter((n) => !itens.some((i) => i.pauta === n && relatoReal(i.relato)));
+    const alvo = vazios.length === 1 ? vazios[0] : 0;
+    const existente = itens.find((i) => i.pauta === alvo);
+    if (existente) existente.relato = relatoReal(existente.relato) ? `${existente.relato.replace(/\s+$/, '')} ${txt}` : txt;
+    else itens.push({ pauta: alvo, relato: txt });
   }
   const pendencias = [...extraida.pendencias, ...faltando.map((u) => `conferir anotação incorporada: ${resumida(u, 80)}`)];
   return { extraida: { ...extraida, itens, pendencias }, incorporadas: faltando };
 }
+
+/** Relato com texto de verdade, e não só abertura de frase e marcador [PENDENTE]. */
+const relatoReal = (r: string) => limpar(r.replace(/\[[^\]]*\]/g, '').replace(/^(?:No|Na|Quanto ao|Sobre o)\b[^,]{0,60},?/i, '')).replace(/[.,;:\s]/g, '').length > 3;
 
 const minuscula1 = (s: string) => (/^[A-ZÀ-Ý][a-zà-ÿ]/.test(s) && !/^[A-ZÀ-Ý][a-zà-ÿ]+\s+[A-ZÀ-Ý]/.test(s) ? s.charAt(0).toLocaleLowerCase('pt-BR') + s.slice(1) : s);

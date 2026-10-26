@@ -10,7 +10,7 @@ const ehOrientado = (meta: MeetingMetadata, nome: string) => listarOrientados(me
 
 function descreverContexto(meta: MeetingMetadata): string {
   const tipo = tipoDe(meta);
-  const onde = `${meta.escola} (${meta.rede}), ${meta.municipioUf}, em ${dataBr(meta.data)}, local: ${meta.local || 'não informado'}`;
+  const onde = `${meta.escola}${meta.rede.trim() ? ` (${meta.rede})` : ''}, ${meta.municipioUf}, em ${dataBr(meta.data)}, local: ${meta.local || 'não informado'}`;
   if (tipo === 'pais') return `Reunião de pais e responsáveis da ${onde}.`;
   if (tipo === 'orientacao') {
     const os = listarOrientados(meta);
@@ -233,7 +233,7 @@ export function buildAtaPrompt(
   const horario = `das ${meta.horaInicio}${meta.horaFim ? ` às ${meta.horaFim}` : ''}`;
   const linhas: string[] = [
     'DADOS DA REUNIÃO (cadastro e pauta prevista; não comprovam falas ou acontecimentos)',
-    `Escola: ${meta.escola} (${meta.rede}), ${meta.municipioUf}`,
+    `Escola: ${meta.escola}${meta.rede.trim() ? ` (${meta.rede})` : ''}, ${meta.municipioUf}`,
     `${descreverContexto(meta)} Horário: ${horario}.`,
     tipo === 'pais' ? 'Pessoas (funcionários e responsáveis):' : 'Pessoas:',
     ...pessoas(meta, meta.anonimizarAlunos),

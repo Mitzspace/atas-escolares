@@ -165,3 +165,38 @@ describe('prompt de cobertura e incorporarAnotacoes', () => {
     expect(incorporarAnotacoes(vazia, []).extraida).toBe(vazia)
   })
 })
+
+describe('cenário do QA: Groq só com saudação + três anotações, modelo que as ignora', () => {
+  const m1: MeetingMetadata = { ...meta, pauta: ['Planejamento escolar'], rede: '' }
+  const notas = [
+    { texto: 'Reunião às 14h', tempo: '00:01' },
+    { texto: 'Clara Dias apresentará o calendário', tempo: '00:03' },
+    { texto: 'Próximo encontro sexta-feira', tempo: '00:04' },
+  ]
+  const ignorou: AtaExtraida = { itens: [], deliberacoes: [], encaminhamentos: [], pendencias: [] }
+  it('prompt: anotações são fonte, com precedência sobre as regras de só-transcrição', () => {
+    const p = buildAtaPrompt(m1, [seg('Falante 1', 'Boa tarde a todos.')], notas)
+    expect(p.systemInstruction).toContain('ANOTAÇÕES TAMBÉM SÃO FONTE')
+    expect(p.systemInstruction).toContain('pretérito perfeito')
+    expect(p.userPrompt).toContain('Anotação 2 [00:03]: Clara Dias apresentará o calendário')
+    expect(p.userPrompt).not.toContain('()')
+  })
+  it('sem item de pauta tratado, as anotações vão para o único item vazio e não sobra PENDENTE desse item', () => {
+    const { extraida } = incorporarAnotacoes(ignorou, notas, m1)
+    expect(extraida.itens).toHaveLength(1)
+    expect(extraida.itens[0].pauta).toBe(1)
+    const texto = renderAta(m1, extraida).texto
+    expect(texto).toContain('Clara Dias apresentará o calendário')
+    expect(texto).toContain('próximo encontro sexta-feira')
+    expect(texto).not.toContain('item não registrado')
+  })
+  it('com mais de um item vazio, vão para fora da pauta', () => {
+    const { extraida } = incorporarAnotacoes(ignorou, notas, { pauta: ['A', 'B'] })
+    expect(extraida.itens.map(i => i.pauta)).toEqual([0])
+  })
+  it('abertura sem rede não tem vírgula dupla', () => {
+    const t = renderAta(m1, ignorou).texto
+    expect(t).not.toMatch(/,\s*,/)
+    expect(t).toMatch(/Escola Municipal Teste, reuniram-se|da Escola Municipal Teste, reuniram-se/)
+  })
+})

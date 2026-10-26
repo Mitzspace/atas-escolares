@@ -348,7 +348,10 @@ function abertura(meta: MeetingMetadata, pres: Participante[]): string {
   const onde = meta.local.trim()
     ? `${locativo(meta.local)} ${escola}`
     : `no local [PENDENTE: local da reunião] ${escola}`;
-  return `${dataPorExtenso(meta.data)}, ${horaPorExtenso(meta.horaInicio)}, ${onde}, ${limpar(meta.rede)}, ${quemSeReuniu(meta, pres)}`;
+  // rede é opcional: sem ela não sobra vírgula dupla
+  return [dataPorExtenso(meta.data), horaPorExtenso(meta.horaInicio), onde, limpar(meta.rede), quemSeReuniu(meta, pres)]
+    .filter(Boolean)
+    .join(', ');
 }
 
 /** Lista numerada em texto corrido: "primeira, ...; segunda, ..." (uma só: sem numeração). */

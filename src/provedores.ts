@@ -75,7 +75,7 @@ export const transcreverComProvedores = (opts: OpcoesTranscricao) => {
  */
 export const redigirComProvedores = async (opts: OpcoesRedacao) => {
   const r = await comReserva(opts, provedor => provedor.redigir(opts), opts.settings.provedorRedacaoPreferido ?? 'gemini')
-  return opts.anotacoes?.length ? { ...r, dados: incorporarAnotacoes(r.dados, opts.anotacoes).extraida } : r
+  return opts.anotacoes?.length ? { ...r, dados: incorporarAnotacoes(r.dados, opts.anotacoes, opts.meta).extraida } : r
 }
 
 // ------------------------------------------------------------------ registro com anotações
