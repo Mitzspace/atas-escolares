@@ -7,7 +7,8 @@ import RevisarAta from './pages/RevisarAta'
 import Imprimir from './pages/Imprimir'
 import Configuracoes from './pages/Configuracoes'
 import { useSettings } from './hooks'
-import { LOGO_PADRAO_URL } from './components/LogoEscola'
+import MarcaApp from './components/MarcaApp'
+import Sobre from './pages/Sobre'
 import { SETTINGS_PADRAO } from './types'
 
 export default function App() {
@@ -21,12 +22,13 @@ export default function App() {
       <header className="border-b-4 border-amber-300 bg-ink text-white">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-4 sm:px-8 sm:py-5">
           <Link to="/" className="flex min-h-12 w-full min-w-0 items-center gap-3 rounded-lg sm:w-auto sm:flex-1">
-            <img src={settings?.logoEscola || LOGO_PADRAO_URL} alt="" className="h-14 w-14 shrink-0 rounded-lg bg-white p-1 object-contain" />
-            <span className="min-w-0"><span className="mb-1 block text-xs uppercase tracking-widest text-slate-200">Atas Escolares</span><span className="block font-document text-lg font-semibold leading-snug sm:text-xl">{settings?.escola || SETTINGS_PADRAO.escola}</span></span>
+            <span className="w-36 shrink-0 rounded-lg bg-white p-1 sm:w-44"><MarcaApp compacta className="h-auto w-full" /></span>
+            <span className="min-w-0"><span className="mb-1 block text-xs uppercase tracking-widest text-slate-200">EMPLMS</span><span className="block font-document text-base font-semibold leading-snug sm:text-lg">{settings?.escola || SETTINGS_PADRAO.escola}</span></span>
           </Link>
           <nav aria-label="Navegação principal" className="flex gap-1">
             <Link to="/" aria-current={pathname === '/' ? 'page' : undefined} className="flex min-h-12 items-center rounded-lg px-3 hover:bg-white/10 aria-[current=page]:bg-white/10">Início</Link>
             <Link to="/config" aria-current={pathname === '/config' ? 'page' : undefined} className="flex min-h-12 items-center rounded-lg px-3 hover:bg-white/10 aria-[current=page]:bg-white/10">Configurações</Link>
+            <Link to="/sobre" aria-current={pathname === '/sobre' ? 'page' : undefined} className="flex min-h-12 items-center rounded-lg px-3 hover:bg-white/10 aria-[current=page]:bg-white/10">Sobre</Link>
           </nav>
         </div>
       </header>
@@ -44,10 +46,11 @@ export default function App() {
           <Route path="/ata/:id/revisar" element={<RevisarAta />} />
           <Route path="/ata/:id/imprimir" element={<Imprimir />} />
           <Route path="/config" element={<Configuracoes />} />
+          <Route path="/sobre" element={<Sobre />} />
           <Route path="*" element={<Inicio />} />
         </Routes>
       </main>
-      <footer className="mx-auto w-full max-w-3xl px-4 pb-6 text-center text-base text-slate-600">Atas Escolares · Arquivo salvo neste aparelho</footer>
+      <footer className="mx-auto w-full max-w-3xl px-4 pb-6 text-center text-base text-slate-600">Ata Inteligente · Arquivo salvo neste aparelho</footer>
     </div>
   )
 }

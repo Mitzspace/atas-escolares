@@ -4,6 +4,7 @@ import { TIPOS_ATA } from '../ata-api'
 import { deleteAta, getSettings, listAtas, precisaBackup } from '../db'
 import { proximaRota } from '../pipeline'
 import type { AtaRecord } from '../types'
+import MarcaApp from '../components/MarcaApp'
 
 const ROTULO: Record<string, string> = {
   rascunho: 'Rascunho', processando: 'Processando', transcricao: 'Transcrição pronta', ata: 'Ata pronta', erro: 'Erro',
@@ -31,6 +32,7 @@ export default function Inicio() {
 
   return (
     <div className="space-y-6">
+      <div className="card"><MarcaApp className="mx-auto h-auto w-full max-w-md" /></div>
       <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div><p className="eyebrow mb-2">ARQUIVO DA ESCOLA</p><h1>Atas de reunião</h1><p className="mt-3 text-slate-600">Da conversa ao registro oficial, passo a passo.</p></div>
         <button className="btn-primary shrink-0" onClick={() => nav('/nova')}>＋ Nova ata</button>

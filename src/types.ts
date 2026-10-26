@@ -61,7 +61,7 @@ export const SETTINGS_PADRAO: Settings = {
   modeloTranscricaoGroq: MODELOS_TRANSCRICAO_GROQ[0].id,
   apiKey: '',
   modelo: MODELO_PADRAO,
-  escola: 'Escola Municipal Professora Luiza Maria',
+  escola: 'Escola Municipal Professora Luiza Maria de Souza',
   logoEscola: '',
   rede: '',
   municipioUf: '',

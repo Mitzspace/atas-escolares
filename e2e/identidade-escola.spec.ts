@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 
-const escola = 'Escola Municipal Professora Luiza Maria'
+const escola = 'Escola Municipal Professora Luiza Maria de Souza'
 const saida = path.resolve('e2e/saida/identidade-escola')
 
 test('identidade padrão, troca e restauração da logo no backup e no PDF, em celular', async ({ page }) => {
@@ -10,7 +10,7 @@ test('identidade padrão, troca e restauração da logo no backup e no PDF, em c
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
   await expect(page.locator('header').getByText(escola, { exact: true })).toBeVisible()
-  await expect(page.locator('header img')).toHaveAttribute('src', /logo-escola.svg$/)
+  await expect(page.locator('header img')).toHaveAttribute('src', /ata-inteligente-compacta.png$/)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: path.join(saida, 'inicio-390.png') })
   await page.getByRole('navigation', { name: 'Navegação principal' }).getByRole('link', { name: 'Configurações' }).click()
@@ -49,7 +49,7 @@ test('identidade padrão, troca e restauração da logo no backup e no PDF, em c
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600"><rect width="1200" height="600" fill="white"/><path d="M100 450V150h150v300Zm300 0V150h300v300Z" fill="#172d49"/><circle cx="950" cy="300" r="150" fill="#b68a35"/></svg>'
   await page.getByLabel('Arquivo da logo').setInputFiles({ name: 'personalizada.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(svg) })
   await expect(page.getByText('Logo salva neste aparelho.', { exact: true })).toBeVisible()
-  await expect(page.locator('header img')).toHaveAttribute('src', /^data:image\/png;base64,/)
+  await expect(page.getByRole('img', { name: 'Logo da escola', exact: true })).toHaveAttribute('src', /^data:image\/png;base64,/)
   const imagem = await page.getByRole('img', { name: 'Logo da escola', exact: true }).evaluate(async (img: HTMLImageElement) => {
     await img.decode(); return { largura: img.naturalWidth, altura: img.naturalHeight, url: img.src }
   })
@@ -61,12 +61,12 @@ test('identidade padrão, troca e restauração da logo no backup e no PDF, em c
   expect(JSON.parse(conteudo).configuracoes.logoEscola).toBe(imagem.url)
   await page.getByRole('button', { name: 'Voltar à logo padrão' }).click()
   await expect(page.getByRole('img', { name: 'Logo da escola', exact: true })).toHaveAttribute('src', /logo-escola.svg$/)
-  await expect(page.locator('header img')).toHaveAttribute('src', /logo-escola.svg$/)
+  await expect(page.locator('header img')).toHaveAttribute('src', /ata-inteligente-compacta.png$/)
   await page.getByLabel('Arquivo de backup').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(conteudo) })
   await page.getByLabel('Substituir as configurações pelas do backup').check()
   await page.getByRole('button', { name: 'Restaurar atas', exact: true }).click()
   await expect(page.getByText(/Restauração concluída/)).toBeVisible()
-  await expect(page.locator('header img')).toHaveAttribute('src', imagem.url)
+  await expect(page.getByRole('img', { name: 'Logo da escola', exact: true })).toHaveAttribute('src', imagem.url)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.evaluate(() => { location.hash = '/ata/identidade/imprimir' })
   await expect(page.getByRole('button', { name: 'Baixar PDF' })).toBeVisible()

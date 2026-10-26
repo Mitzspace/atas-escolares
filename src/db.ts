@@ -28,7 +28,7 @@ export const db = new AtasDB()
 export async function getSettings(): Promise<Settings> {
   const row = await db.settings.get('main')
   const s = { ...SETTINGS_PADRAO, ...row?.value }
-  if (typeof s.escola !== 'string' || !s.escola.trim()) s.escola = SETTINGS_PADRAO.escola
+  if (typeof s.escola !== 'string' || !s.escola.trim() || s.escola === 'Escola Municipal Professora Luiza Maria') s.escola = SETTINGS_PADRAO.escola
   return s
 }
 const avisarConfiguracoes = () => { if (typeof window !== 'undefined') window.dispatchEvent(new Event('configuracoes-alteradas')) }
