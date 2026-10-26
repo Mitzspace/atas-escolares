@@ -13,6 +13,7 @@ import { SETTINGS_PADRAO } from './types'
 
 export default function App() {
   const { pathname } = useLocation()
+  useLayoutEffect(() => { window.scrollTo(0, 0) }, [pathname])
   const [settings] = useSettings()
   const etapa = pathname === '/nova' ? 0 : pathname.includes('/imprimir') ? 3 : pathname.includes('/revisar') || pathname.endsWith('/processando/ata') ? 2 : 1
   const emFluxo = pathname === '/nova' || pathname.startsWith('/ata/')
@@ -54,3 +55,4 @@ export default function App() {
     </div>
   )
 }
+import { useLayoutEffect } from 'react'

@@ -47,6 +47,7 @@ export type Settings = {
   local: string
   /** professores e funcionários cadastrados (cargo incluso) */
   pessoas: Pessoa[]
+  cargosExtras?: string[]
   glossario: string
   /** assuntos próprios da escola, somados às sugestões padrão de cada tipo de ata */
   assuntosExtras: AssuntosExtras

@@ -138,7 +138,7 @@ export default function RevisarAta() {
             <li key={`fixo${i}`}>
               <label className="flex min-h-12 items-center gap-3 rounded-xl border border-rule bg-slate-50 p-4">
                 <input type="checkbox" className="size-6 shrink-0 accent-blue-900" checked disabled />
-                <span><b>{p.nome}</b> <span className="text-slate-600">— {p.cargo}</span> <span className="text-xs text-slate-500">({mesmaPessoa(quemOrienta(atual.meta), quemLavra(atual.meta)) ? 'presidiu e lavrou a ata' : i === 0 ? 'presidiu' : 'lavrou a ata'})</span></span>
+                <span><b>{p.nome}</b> {p.cargo && <span className="text-slate-600">— {p.cargo}</span>} <span className="text-xs text-slate-500">({atual.meta.responsavel ? atual.meta.tipo === 'orientacao' ? 'orientou e lavrou a ata' : 'fez a ata' : mesmaPessoa(quemOrienta(atual.meta), quemLavra(atual.meta)) ? 'presidiu e lavrou a ata' : i === 0 ? 'presidiu' : 'lavrou a ata'})</span></span>
               </label>
             </li>
           ))}
@@ -162,7 +162,7 @@ export default function RevisarAta() {
         {lista.length === 0 && (
           <p className="text-sm text-slate-600">Nenhum outro participante.{atual.meta.tipo !== 'orientacao' && <> Cadastre professores e funcionários em <Link to="/config" className="font-semibold underline">Configurações</Link>.</>}</p>
         )}
-        {textoDesatualizado && (
+        {textoDesatualizado && !finalizada && (
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900" role="alert">
             <p>Você editou à mão o início do texto, então a abertura não pôde ser atualizada com a nova presença (as assinaturas já foram).</p>
             <button className="btn-secondary mt-2 w-full" onClick={refazerTexto}>Refazer o texto com a nova presença (perde as edições)</button>
@@ -211,7 +211,7 @@ export default function RevisarAta() {
       <section className="card">
         <h2 className="font-semibold">Assinam</h2>
         <ul className="mt-3 space-y-3 divide-y divide-slate-200 text-base text-slate-700">
-          {atual.renderizada!.assinaturas.map((p, i) => <li key={i}>{p.nome} — {p.cargo}</li>)}
+          {atual.renderizada!.assinaturas.map((p, i) => <li key={i}>{p.nome}{p.cargo ? ` — ${p.cargo}` : ''}</li>)}
         </ul>
       </section>
 
@@ -236,7 +236,7 @@ export default function RevisarAta() {
 
       <div className="action-bar">
         <div className="mx-auto flex max-w-3xl gap-2 sm:px-8">
-          <Link to={`/ata/${id}/transcricao`} className="btn-secondary px-3 sm:px-5">← Transcrição</Link>
+          {atual.modoRegistro !== 'digitar' && <Link to={`/ata/${id}/transcricao`} className="btn-secondary px-3 sm:px-5">← Transcrição</Link>}
           <button
             className="btn-primary flex-1"
             onClick={async () => { if (!finalizada) await patchAta(id, { textoEditado: texto }); nav(`/ata/${id}/imprimir`) }}

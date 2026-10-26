@@ -65,7 +65,7 @@ export async function finalizarAta(id: string, texto: string, revisada: boolean)
     const ata = await db.atas.get(id)
     if (!ata?.renderizada) throw new Error('Ata não encontrada.')
     if (ata.finalizadaEm) return ata
-    const final = { ...ata, textoEditado: texto, finalizadaEm: Date.now(), atualizadaEm: Date.now() }
+    const final = { ...ata, status: 'ata' as const, erro: undefined, textoEditado: texto, finalizadaEm: Date.now(), atualizadaEm: Date.now() }
     await db.atas.put(final)
     return final
   })
@@ -161,7 +161,7 @@ const regraAta = objeto({
 }, ['erro', 'audioNome', 'transcript', 'provedorTranscricao', 'modeloTranscricao', 'provedorRedacao', 'modeloRedacao',
   'extraida', 'renderizada', 'textoEditado', 'convocados', 'modoRegistro', 'anotacoes', 'resumo', 'finalizadaEm', 'reabertaEm'])
 const camposSettings: Record<string, Regra> = {
-  escola: 'texto', logoEscola: 'texto', rede: 'texto', municipioUf: 'texto', local: 'texto', pessoas: lista(pessoa), glossario: 'texto',
+  escola: 'texto', logoEscola: 'texto', rede: 'texto', municipioUf: 'texto', local: 'texto', pessoas: lista(pessoa), cargosExtras: lista('texto'), glossario: 'texto',
   assuntosExtras: objeto({ pedagogica: lista('texto'), pais: lista('texto'),
     orientacao_aluno: lista('texto'), orientacao_funcionario: lista('texto') },
   ['pedagogica', 'pais', 'orientacao_aluno', 'orientacao_funcionario']),

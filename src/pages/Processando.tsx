@@ -52,7 +52,7 @@ export default function Processando() {
           </div>
           {etapa === 'ata' && <AvisoModeloEconomico modelo={modeloAtual} />}
           <p className="text-sm text-slate-600">
-            Isso pode levar alguns minutos, conforme o tamanho do áudio. Mantenha esta tela aberta.
+            Isso pode levar alguns minutos, conforme o tamanho do registro. Mantenha esta tela aberta.
           </p>
         </div>
       )}

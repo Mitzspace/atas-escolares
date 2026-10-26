@@ -1,473 +1,873 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { TIPOS_ATA, listarOrientados, type Anotacao, type ModoRegistro, type MeetingMetadata, type Participante, type Pessoa, type TipoAta } from '../ata-api'
+import {
+  CARGOS_SUGERIDOS,
+  listarOrientados,
+  OPCOES_TIPO_REUNIAO,
+  OUTRO_TIPO_REUNIAO,
+  quemLavra,
+  tipoDaOpcao,
+  type Anotacao,
+  type MeetingMetadata,
+  type ModoRegistro,
+  type Participante,
+  type Pessoa,
+} from '../ata-api'
 import AssuntosSugeridos from '../components/AssuntosSugeridos'
-import Gravador from '../components/Gravador'
+import RegistroReuniao from '../components/RegistroReuniao'
 import { assuntosSugeridos, chavesDeAssuntos } from '../assuntos'
-import { apagarSessaoGravacao, getAta, getAudio, getSettings, novoId, proximoNumero, saveAta, saveAudio, saveSettings } from '../db'
+import {
+  apagarSessaoGravacao,
+  getAta,
+  getAudio,
+  getSettings,
+  novoId,
+  proximoNumero,
+  saveAta,
+  saveAudio,
+  saveSettings,
+} from '../db'
 import { mimeDoAudio } from '../gemini'
+import { usarTextoComoEsta } from '../pipeline'
 import { vinculoDoResponsavel, type TratamentoAluno } from '../pessoas'
 import type { Settings } from '../types'
-import { usarTextoComoEsta } from '../pipeline'
 
-type Part = Pessoa & { presente: boolean }
-type Aluno = { nome: string; turma: string; foco?: boolean }
-type Responsavel = { nome: string; parentesco: Parentesco; aluno: string; turma: string; tratamento?: TratamentoAluno; foco?: boolean }
-type Parentesco = 'Mãe' | 'Pai' | 'Responsável'
-/** quem recebe a orientação; aluno pode ter um responsável acompanhando */
-type Orientado = { id: number; tipo: 'funcionario' | 'aluno'; nome: string; cargo: string; turma: string; respNome: string; respParentesco: Parentesco; foco?: boolean }
-const PARENTESCOS: Parentesco[] = ['Mãe', 'Pai', 'Responsável']
-const TIPOS: TipoAta[] = ['pedagogica', 'pais', 'orientacao']
-const chaveNome = (n: string) => n.trim().toLocaleLowerCase('pt-BR')
-
+type PessoaEditavel = {
+  id: string
+  nome: string
+  cargo: string
+  aluno: string
+  turma: string
+  tratamento: TratamentoAluno
+  recebeOrientacao: boolean
+}
+const chave = (s: string) =>
+  s.normalize('NFD').replace(/\p{M}/gu, '').trim().toLocaleLowerCase('pt-BR')
+const categoria = (cargo: string) =>
+  /^(mae|pai|responsavel)$/.test(chave(cargo))
+    ? 'responsavel'
+    : /^alun[oa]/.test(chave(cargo))
+      ? 'aluno'
+      : 'funcionario'
 const hoje = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
-const TAMANHO_MAX_MB = 200
+const pessoaVazia = (): PessoaEditavel => ({
+  id: novoId(),
+  nome: '',
+  cargo: '',
+  aluno: '',
+  turma: '',
+  tratamento: 'aluno(a)',
+  recebeOrientacao: false,
+})
+
+function TituloCartao({
+  titulo,
+  descricao,
+  icone,
+}: {
+  titulo: string
+  descricao?: string
+  icone: 'tipo' | 'pessoa' | 'grupo'
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <span
+        className="flex size-12 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-900"
+        aria-hidden="true"
+      >
+        <svg
+          width="26"
+          height="26"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          {icone === 'tipo' ? (
+            <>
+              <rect x="4" y="5" width="16" height="16" rx="2" />
+              <path d="M8 2v6M16 2v6M4 11h16M8 15h2M14 15h2" />
+            </>
+          ) : icone === 'pessoa' ? (
+            <>
+              <circle cx="12" cy="7" r="4" />
+              <path d="M4 22v-3a8 8 0 0 1 16 0v3" />
+            </>
+          ) : (
+            <>
+              <circle cx="9" cy="7" r="3" />
+              <circle cx="18" cy="9" r="2.5" />
+              <path d="M2 21v-3a7 7 0 0 1 14 0v3M17 14a5 5 0 0 1 5 5v2" />
+            </>
+          )}
+        </svg>
+      </span>
+      <div>
+        <h2>{titulo}</h2>
+        {descricao && (
+          <p className="mt-2 text-sm text-slate-600">{descricao}</p>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export default function NovaAta() {
-  const nav = useNavigate()
-  const [parametros] = useSearchParams()
+  const nav = useNavigate(),
+    [parametros] = useSearchParams()
   const [idRegistro] = useState(() => parametros.get('rascunho') || novoId())
-  const criadaEm = useRef(Date.now())
-  const [modoRegistro, setModoRegistro] = useState<ModoRegistro>('audio')
-  const [anotacoes, setAnotacoes] = useState<Anotacao[]>([{ texto: '' }])
-  const [tempoMs, setTempoMs] = useState(0)
-  const [gravando, setGravando] = useState(false)
-  const [salvoAutomatico, setSalvoAutomatico] = useState(false)
-  const rotaRascunho = useRef(!!parametros.get('rascunho'))
+  const criadaEm = useRef(Date.now()),
+    rotaRascunho = useRef(!!parametros.get('rascunho'))
   const [cfg, setCfg] = useState<Settings | null>(null)
-  const [tipo, setTipo] = useState<TipoAta | null>(null)
-  const [ordinaria, setOrdinaria] = useState(true)
-  const [numero, setNumero] = useState(1)
-  const [data, setData] = useState(hoje())
-  const [horaInicio, setHoraInicio] = useState('')
-  const [horaFim, setHoraFim] = useState('')
-  const [local, setLocal] = useState('')
-  const [presidente, setPresidente] = useState<Pessoa>({ nome: '', cargo: '' })
-  const [secretario, setSecretario] = useState<Pessoa>({ nome: '', cargo: '' })
-  const [mesmaPessoa, setMesmaPessoa] = useState(false)
-  const [parts, setParts] = useState<Part[]>([])
-  const [alunos, setAlunos] = useState<Aluno[]>([])
-  const [responsaveis, setResponsaveis] = useState<Responsavel[]>([])
-  const [orientados, setOrientados] = useState<Orientado[]>([])
-  const [pauta, setPauta] = useState<string[]>([''])
-  const [anonimizar, setAnonimizar] = useState(true)
-  const [glossario, setGlossario] = useState('')
-  const [audio, setAudio] = useState<File | null>(null)
-  const [sessaoGravacao, setSessaoGravacao] = useState<string | undefined>()
-  const [erro, setErro] = useState('')
-  const [salvando, setSalvando] = useState(false)
+  const [opcao, setOpcao] = useState(''),
+    [outro, setOutro] = useState('')
+  const [responsavel, setResponsavel] = useState<Pessoa>({
+    nome: '',
+    cargo: '',
+  })
+  const [participantes, setParticipantes] = useState<PessoaEditavel[]>([])
+  const [numero, setNumero] = useState(1),
+    [data, setData] = useState(hoje())
+  const [horaInicio, setHoraInicio] = useState(''),
+    [horaFim, setHoraFim] = useState(''),
+    [local, setLocal] = useState('')
+  const [pauta, setPauta] = useState<string[]>(['']),
+    [anonimizar, setAnonimizar] = useState(true),
+    [glossario, setGlossario] = useState('')
+  const [modoRegistro, setModoRegistro] = useState<ModoRegistro>('audio'),
+    [anotacoes, setAnotacoes] = useState<Anotacao[]>([{ texto: '' }])
+  const [audio, setAudio] = useState<File | null>(null),
+    [sessao, setSessao] = useState<string>()
+  const [tempoMs, setTempoMs] = useState(0),
+    [gravando, setGravando] = useState(false)
+  const [salvando, setSalvando] = useState(false),
+    [salvoAutomatico, setSalvoAutomatico] = useState(false)
+  const [erro, setErro] = useState(''),
+    [mensagem, setMensagem] = useState('')
+  const rotulo = opcao === OUTRO_TIPO_REUNIAO ? outro.trim() : opcao
+  const tipo = tipoDaOpcao(rotulo)
 
   useEffect(() => {
-    getSettings().then(async s => {
-      setCfg(s)
+    void (async () => {
+      const s = await getSettings()
       setLocal(s.local)
       setGlossario(s.glossario)
-      setParts(s.pessoas.map(p => ({ ...p, presente: true })))
       setNumero(await proximoNumero(new Date().getFullYear()))
       if (parametros.has('rascunho')) {
         const a = await getAta(idRegistro)
-        if (!a) return
-        if (a.renderizada || a.finalizadaEm) { nav(`/ata/${a.id}/revisar`, { replace: true }); return }
-        const m = a.meta
-        criadaEm.current = a.criadaEm
-        setTipo(m.tipo ?? 'pedagogica'); setOrdinaria(m.ordinaria ?? true); setNumero(m.numero); setData(m.data)
-        setHoraInicio(m.horaInicio); setHoraFim(m.horaFim ?? ''); setLocal(m.local)
-        setPresidente(m.presidente ?? m.responsavel ?? { nome: '', cargo: '' }); setSecretario(m.secretario ?? m.responsavel ?? { nome: '', cargo: '' })
-        setMesmaPessoa(!!m.presidente?.nome.trim() && chaveNome(m.presidente.nome) === chaveNome(m.secretario?.nome ?? ''))
-        setPauta(m.pauta.length ? m.pauta : ['']); setAnonimizar(m.anonimizarAlunos); setGlossario((m.glossario ?? []).join('\n'))
-        setModoRegistro(a.modoRegistro ?? 'audio'); setAnotacoes(a.anotacoes?.length ? a.anotacoes : [{ texto: '' }])
-        setParts(m.participantes.filter(p => !p.categoria || p.categoria === 'funcionario'))
-        setAlunos(m.participantes.filter(p => p.categoria === 'aluno').map(p => ({ nome: p.nome, turma: p.vinculo ?? '' })))
-        setResponsaveis(m.participantes.filter(p => p.categoria === 'responsavel').map(p => {
-          const v = (p.vinculo ?? '').replace(/^alun[oa](?:\(a\))?\s+/i, '').split(',')
-          return { nome: p.nome, parentesco: PARENTESCOS.includes(p.cargo as Parentesco) ? p.cargo as Parentesco : 'Responsável', aluno: v[0] ?? '', turma: v.slice(1).join(',').trim(), tratamento: p.vinculo?.startsWith('aluna ') ? 'aluna' : 'aluno(a)' }
-        }))
-        setOrientados(listarOrientados(m).map((o, i) => {
-          const r = m.participantes.find(p => p.categoria === 'responsavel' && p.vinculo?.includes(o.nome))
-          return { id: i + 1, tipo: o.categoria === 'aluno' ? 'aluno' : 'funcionario', nome: o.nome, cargo: o.cargo, turma: o.vinculo ?? '', respNome: r?.nome ?? '', respParentesco: r && PARENTESCOS.includes(r.cargo as Parentesco) ? r.cargo as Parentesco : 'Mãe' }
-        }))
-        const audioSalvo = await getAudio(a.id)
-        if (audioSalvo) setAudio(new File([audioSalvo.blob], audioSalvo.nome, { type: audioSalvo.mimeType }))
-        setSalvoAutomatico(true)
-      }
-    })
-  }, [])
-
-  const upParte = (i: number, patch: Partial<Part>) => setParts(ps => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)))
-  const upAluno = (i: number, patch: Partial<Aluno>) => setAlunos(as => as.map((a, j) => (j === i ? { ...a, ...patch } : a)))
-  const upOrient = (id: number, patch: Partial<Orientado>) => setOrientados(os => os.map(o => (o.id === id ? { ...o, ...patch } : o)))
-  const addOrient = (tipo: Orientado['tipo']) => setOrientados(os => [...os, { id: Math.max(0, ...os.map(o => o.id)) + 1, tipo, nome: '', cargo: '', turma: '', respNome: '', respParentesco: 'Mãe', foco: true }])
-  const upResp = (i: number, patch: Partial<Responsavel>) => setResponsaveis(rs => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
-
-  function escolherTipo(t: TipoAta) {
-    setTipo(t)
-    // na orientação o aluno orientado é o próprio assunto, e quem orienta costuma lavrar a ata
-    setAnonimizar(t !== 'orientacao')
-    setMesmaPessoa(t === 'orientacao')
-    setOrdinaria(t !== 'orientacao')
-  }
-
-  function dadosAtuais() {
-    const quemLavrou = mesmaPessoa ? presidente : secretario
-    const funcionarios: Participante[] = tipo === 'orientacao' ? [] : parts.filter(p => p.nome.trim())
-      .map(p => ({ nome: p.nome.trim(), cargo: p.cargo.trim(), presente: p.presente, categoria: 'funcionario' as const }))
-    const extras: Participante[] = []
-    if (tipo === 'pedagogica') {
-      for (const a of alunos.filter(a => a.nome.trim())) extras.push({ nome: a.nome.trim(), cargo: 'Aluno(a)', presente: true, categoria: 'aluno', vinculo: a.turma.trim() })
-    }
-    if (tipo === 'pais') {
-      for (const r of responsaveis.filter(r => r.nome.trim())) extras.push({ nome: r.nome.trim(), cargo: r.parentesco, presente: true, categoria: 'responsavel', vinculo: vinculoDoResponsavel(r.aluno, r.turma, r.tratamento) })
-    }
-    const listaOrientados: Participante[] = []
-    if (tipo === 'orientacao') {
-      for (const o of orientados) {
-        if (o.tipo === 'funcionario') {
-          listaOrientados.push({ nome: o.nome.trim(), cargo: o.cargo.trim(), presente: true, categoria: 'funcionario' })
-        } else {
-          listaOrientados.push({ nome: o.nome.trim(), cargo: 'Aluno(a)', presente: true, categoria: 'aluno', vinculo: o.turma.trim() })
-          if (o.respNome.trim()) {
-            extras.push({ nome: o.respNome.trim(), cargo: o.respParentesco, presente: true, categoria: 'responsavel', vinculo: vinculoDoResponsavel(o.nome, o.turma) })
-          }
+        if (a?.renderizada || a?.finalizadaEm) {
+          nav(`/ata/${a.id}/revisar`, { replace: true })
+          return
+        }
+        if (a) {
+          const m = a.meta,
+            r =
+              m.tipoReuniao ||
+              OPCOES_TIPO_REUNIAO.find((o) => o.tipo === m.tipo)?.rotulo ||
+              ''
+          setOpcao(
+            OPCOES_TIPO_REUNIAO.some((o) => o.rotulo === r)
+              ? r
+              : OUTRO_TIPO_REUNIAO,
+          )
+          setOutro(r)
+          setResponsavel(quemLavra(m))
+          setNumero(m.numero)
+          setData(m.data)
+          setHoraInicio(m.horaInicio)
+          setHoraFim(m.horaFim ?? '')
+          setLocal(m.local)
+          setPauta(m.pauta.length ? m.pauta : [''])
+          setAnonimizar(m.anonimizarAlunos)
+          setGlossario((m.glossario ?? []).join('\n'))
+          setModoRegistro(a.modoRegistro ?? 'audio')
+          setAnotacoes(a.anotacoes?.length ? a.anotacoes : [{ texto: '' }])
+          criadaEm.current = a.criadaEm
+          const orientados = new Set(
+            listarOrientados(m).map((p) => chave(p.nome)),
+          )
+          setParticipantes(
+            m.participantes.map((p) => {
+              const v = (p.vinculo ?? '')
+                .replace(/^alun[oa](?:\(a\))?\s+/i, '')
+                .split(',')
+              return {
+                ...pessoaVazia(),
+                nome: p.nome,
+                cargo: p.cargo,
+                aluno: p.categoria === 'responsavel' ? (v[0] ?? '') : '',
+                turma:
+                  p.categoria === 'responsavel'
+                    ? v.slice(1).join(',').trim()
+                    : (p.vinculo ?? ''),
+                tratamento: p.vinculo?.startsWith('aluna ')
+                  ? 'aluna'
+                  : 'aluno(a)',
+                recebeOrientacao: orientados.has(chave(p.nome)),
+              }
+            }),
+          )
+          const f = await getAudio(a.id)
+          if (f) setAudio(new File([f.blob], f.nome, { type: f.mimeType }))
+          setSalvoAutomatico(true)
         }
       }
-    }
-    const meta: MeetingMetadata = {
-      escola: cfg!.escola.trim(), rede: cfg!.rede.trim(), municipioUf: cfg!.municipioUf.trim(), tipo: tipo!, ordinaria,
-      numero, ano: Number(data.slice(0, 4)), data, horaInicio, horaFim: horaFim || undefined, local: local.trim(),
-      presidente, secretario: quemLavrou,
-      participantes: [...funcionarios, ...extras],
-      ...(listaOrientados.length ? { orientados: listaOrientados } : {}),
-      pauta: pauta.map(x => x.trim()).filter(Boolean),
+      setCfg(s)
+    })().catch(() =>
+      setErro(
+        'Não foi possível carregar os dados deste aparelho. Tente recarregar a página.',
+      ),
+    )
+  }, [])
+
+  const meta = useMemo<MeetingMetadata>(
+    () => ({
+      escola: cfg?.escola ?? '',
+      rede: cfg?.rede ?? '',
+      municipioUf: cfg?.municipioUf ?? '',
+      tipo,
+      tipoReuniao: rotulo,
+      numero,
+      ano: Number(data.slice(0, 4)),
+      data,
+      horaInicio,
+      horaFim: horaFim || undefined,
+      local: local.trim(),
+      responsavel,
+      participantes: participantes
+        .filter((p) => p.nome.trim())
+        .map((p) => {
+          const c = categoria(p.cargo)
+          return {
+            nome: p.nome.trim(),
+            cargo: p.cargo.trim(),
+            presente: true,
+            categoria: c,
+            ...(c === 'responsavel' && (p.aluno.trim() || p.turma.trim())
+              ? {
+                  vinculo: vinculoDoResponsavel(p.aluno, p.turma, p.tratamento),
+                }
+              : c === 'aluno' && p.turma.trim()
+                ? { vinculo: p.turma.trim() }
+                : {}),
+            ...(tipo === 'orientacao' && p.recebeOrientacao
+              ? { recebeOrientacao: true }
+              : {}),
+          } as Participante
+        }),
+      pauta: pauta.map((p) => p.trim()).filter(Boolean),
       anonimizarAlunos: anonimizar,
-      glossario: glossario.split('\n').map(x => x.trim()).filter(Boolean),
-    }
-    return { meta, funcionarios, listaOrientados }
-  }
+      glossario: glossario
+        .split('\n')
+        .map((p) => p.trim())
+        .filter(Boolean),
+    }),
+    [
+      cfg,
+      tipo,
+      rotulo,
+      numero,
+      data,
+      horaInicio,
+      horaFim,
+      local,
+      responsavel,
+      participantes,
+      pauta,
+      anonimizar,
+      glossario,
+    ],
+  )
 
   useEffect(() => {
-    if (!cfg || !tipo || modoRegistro === 'audio' || salvando || !anotacoes.some(a => a.texto.trim())) return
+    if (
+      !cfg ||
+      modoRegistro === 'audio' ||
+      salvando ||
+      !anotacoes.some((a) => a.texto.trim())
+    )
+      return
     let vivo = true
     setSalvoAutomatico(false)
     const timer = setTimeout(() => {
-      void saveAta({ id: idRegistro, criadaEm: criadaEm.current, atualizadaEm: Date.now(), status: 'rascunho',
-        meta: dadosAtuais().meta, modoRegistro, anotacoes: anotacoes.filter(a => a.texto.trim()) })
+      void saveAta({
+        id: idRegistro,
+        criadaEm: criadaEm.current,
+        atualizadaEm: Date.now(),
+        status: 'rascunho',
+        meta,
+        modoRegistro,
+        anotacoes: anotacoes.filter((a) => a.texto.trim()),
+      })
         .then(() => {
           if (!vivo) return
           setSalvoAutomatico(true)
-          if (!rotaRascunho.current) { rotaRascunho.current = true; nav(`/nova?rascunho=${idRegistro}`, { replace: true }) }
-        }).catch(() => { if (vivo) setErro('Não foi possível guardar as anotações neste aparelho. Confira o espaço disponível antes de sair.') })
+          if (!rotaRascunho.current) {
+            rotaRascunho.current = true
+            nav(`/nova?rascunho=${idRegistro}`, { replace: true })
+          }
+        })
+        .catch(() => {
+          if (vivo)
+            setErro(
+              'Não foi possível guardar as anotações neste aparelho. Confira o espaço disponível antes de sair.',
+            )
+        })
     }, 600)
-    return () => { vivo = false; clearTimeout(timer) }
-  }, [cfg, tipo, modoRegistro, anotacoes, ordinaria, numero, data, horaInicio, horaFim, local, presidente, secretario, mesmaPessoa, parts, alunos, responsaveis, orientados, pauta, anonimizar, glossario, salvando, idRegistro, nav])
+    return () => {
+      vivo = false
+      clearTimeout(timer)
+    }
+  }, [cfg, meta, modoRegistro, anotacoes, salvando, idRegistro, nav])
 
+  const atualizar = (id: string, patch: Partial<PessoaEditavel>) =>
+    setParticipantes((ps) =>
+      ps.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+    )
+  async function cadastrar(pessoas: Pessoa[]) {
+    const atual = await getSettings(),
+      todas = [...atual.pessoas]
+    for (const p of pessoas.filter((p) => p.nome.trim()))
+      if (
+        !todas.some(
+          (x) =>
+            chave(x.nome) === chave(p.nome) &&
+            chave(x.cargo) === chave(p.cargo),
+        )
+      )
+        todas.push({ nome: p.nome.trim(), cargo: p.cargo.trim() })
+    const cargosExtras = [
+      ...new Set([
+        ...(atual.cargosExtras ?? []),
+        ...pessoas.map((p) => p.cargo.trim()).filter(Boolean),
+      ]),
+    ]
+    const novo = { ...atual, pessoas: todas, cargosExtras }
+    await saveSettings(novo)
+    setCfg(novo)
+  }
   async function enviar(e: React.FormEvent) {
     e.preventDefault()
     setErro('')
-    if (modoRegistro !== 'digitar') {
-      if (!audio) return setErro('Grave ou envie o áudio da reunião.')
-      try { mimeDoAudio(audio) } catch (x) { return setErro((x as Error).message) }
-      if (audio.size > TAMANHO_MAX_MB * 1024 * 1024) return setErro(`O arquivo tem mais de ${TAMANHO_MAX_MB} MB. Envie um áudio menor (ou em mp3/m4a).`)
-    } else if (!anotacoes.some(a => a.texto.trim())) return setErro('Escreva o texto ou as anotações antes de continuar.')
-    if (!cfg?.escola.trim()) return setErro('Cadastre o nome da escola em Configurações antes de criar a ata.')
-    const quemLavrou = mesmaPessoa ? presidente : secretario
-    if (!presidente.nome.trim() || !quemLavrou.nome.trim()) return setErro(tipo === 'orientacao'
-      ? 'Informe quem orienta e quem lavrou a ata.'
-      : 'Informe quem presidiu a reunião e quem secretariou (lavrou a ata).')
+    if (!rotulo) return setErro('Selecione ou digite o tipo de reunião.')
+    if (!responsavel.nome.trim()) return setErro('Informe quem fez a ata.')
     if (!horaInicio) return setErro('Informe a hora de início.')
-    if (tipo === 'orientacao') {
-      if (!orientados.length) return setErro('Adicione pelo menos uma pessoa que recebe a orientação.')
-      const func = orientados.find(o => o.tipo === 'funcionario' && (!o.nome.trim() || !o.cargo.trim()))
-      if (func) return setErro('Informe o nome e o cargo de cada funcionário que recebe a orientação.')
-      if (orientados.some(o => o.tipo === 'aluno' && !o.nome.trim())) return setErro('Informe o nome de cada aluno que recebe a orientação.')
-    }
-
-    const { meta, funcionarios, listaOrientados } = dadosAtuais()
-    setSalvando(true)
-    // só funcionários entram no cadastro (responsáveis e alunos são digitados a cada ata)
-    try {
-    const candidatos: Pessoa[] = [...funcionarios, ...listaOrientados.filter(o => o.categoria === 'funcionario')]
-    const conhecidos = new Set(cfg!.pessoas.map(p => chaveNome(p.nome)))
-    const novos = candidatos.filter(p => {
-      const k = chaveNome(p.nome)
-      if (conhecidos.has(k)) return false
-      conhecidos.add(k)
-      return true
-    }).map(p => ({ nome: p.nome.trim(), cargo: p.cargo.trim() }))
-    if (novos.length) await saveSettings({ ...cfg!, pessoas: [...cfg!.pessoas, ...novos] })
-    const id = idRegistro
-    if (modoRegistro !== 'digitar' && audio) await saveAudio(id, audio)
-    if (sessaoGravacao) await apagarSessaoGravacao(sessaoGravacao)
-    await saveAta({ id, criadaEm: criadaEm.current, atualizadaEm: Date.now(), status: 'rascunho', meta,
-      modoRegistro, anotacoes: modoRegistro === 'audio' ? undefined : anotacoes.filter(a => a.texto.trim()), audioNome: modoRegistro !== 'digitar' ? audio?.name : undefined })
-    if (modoRegistro === 'digitar' && (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'usar') {
-      await usarTextoComoEsta(id, anotacoes.map(a => a.texto).join('\n'))
-      nav(`/ata/${id}/revisar`, { replace: true })
-    } else nav(`/ata/${id}/processando/${modoRegistro === 'digitar' ? 'ata' : 'transcricao'}`, { replace: true })
-    } catch (x) { setErro((x as Error).message); setSalvando(false) }
-  }
-
-  if (!cfg) return <p className="text-slate-500">Carregando…</p>
-
-  if (tipo === null) {
-    return (
-      <div className="space-y-6">
-        <div><p className="eyebrow mb-2">NOVA ATA</p><h1>Que tipo de ata?</h1></div>
-        <ul className="space-y-3">
-          {TIPOS.map(t => (
-            <li key={t}>
-              <button type="button" onClick={() => escolherTipo(t)} className="type-card group">
-                <span className="type-icon" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                  {t === 'pedagogica' ? <><path d="M4 6h9l3 3 3-3h9v21h-9l-3 2-3-2H4zM16 9v20M8 12h4M8 17h4M20 12h4M20 17h4" /></> : t === 'pais' ? <><circle cx="11" cy="9" r="4" /><circle cx="23" cy="12" r="3" /><path d="M3 27v-4a8 8 0 0 1 16 0v4M21 19a6 6 0 0 1 8 6v2" /></> : <><path d="M4 5h24v16H16l-7 6v-6H4zM10 11h12M10 16h8" /></>}
-                </svg></span>
-                <span className="min-w-0 flex-1"><span className="block font-document text-xl font-semibold text-ink">{TIPOS_ATA[t].nome}</span>
-                <span className="mt-2 block text-slate-600">{TIPOS_ATA[t].descricao}</span></span>
-                <span className="self-center text-2xl text-blue-900" aria-hidden="true">›</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
+    if (
+      tipo === 'orientacao' &&
+      !meta.participantes.some((p) => p.recebeOrientacao)
     )
+      return setErro(
+        'Marque quem recebe a orientação na lista de participantes.',
+      )
+    if (modoRegistro === 'digitar') {
+      if (!anotacoes.some((a) => a.texto.trim()))
+        return setErro('Escreva o texto ou as anotações antes de continuar.')
+    } else {
+      if (!audio) return setErro('Grave ou envie o áudio da reunião.')
+      try {
+        mimeDoAudio(audio)
+      } catch (x) {
+        return setErro((x as Error).message)
+      }
+      if (audio.size > 200 * 1024 * 1024)
+        return setErro(
+          'O arquivo tem mais de 200 MB. Envie um áudio menor (ou em mp3/m4a).',
+        )
+    }
+    const semIA =
+      (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'usar'
+    setSalvando(true)
+    try {
+      await cadastrar([responsavel, ...meta.participantes])
+      if (modoRegistro !== 'digitar' && audio)
+        await saveAudio(idRegistro, audio)
+      await saveAta({
+        id: idRegistro,
+        criadaEm: criadaEm.current,
+        atualizadaEm: Date.now(),
+        status: 'rascunho',
+        meta,
+        modoRegistro,
+        anotacoes:
+          modoRegistro === 'audio'
+            ? undefined
+            : anotacoes.filter((a) => a.texto.trim()),
+        audioNome: modoRegistro !== 'digitar' ? audio?.name : undefined,
+      })
+      if (sessao) await apagarSessaoGravacao(sessao)
+      if (modoRegistro === 'digitar' && semIA) {
+        await usarTextoComoEsta(
+          idRegistro,
+          anotacoes.map((a) => a.texto).join('\n'),
+        )
+        nav(`/ata/${idRegistro}/revisar`, { replace: true })
+      } else
+        nav(
+          `/ata/${idRegistro}/processando/${modoRegistro === 'digitar' ? 'ata' : 'transcricao'}`,
+          { replace: true },
+        )
+    } catch (x) {
+      setErro((x as Error).message)
+      setSalvando(false)
+    }
   }
-
-  const ehOrientacao = tipo === 'orientacao'
-  const nomeTipo = TIPOS_ATA[tipo].nome
-
+  if (!cfg) return <p role="status">Carregando…</p>
+  const nomes = [...new Set(cfg.pessoas.map((p) => p.nome))],
+    cargos = [
+      ...new Set(
+        [
+          ...CARGOS_SUGERIDOS,
+          ...(cfg.cargosExtras ?? []),
+          ...cfg.pessoas.map((p) => p.cargo),
+        ].filter(Boolean),
+      ),
+    ]
+  const escolherNome = (nome: string) => {
+    const p = cfg.pessoas.find((p) => p.nome === nome)
+    setResponsavel((r) => ({ nome, cargo: p?.cargo ?? r.cargo }))
+  }
   return (
     <form onSubmit={enviar} className="space-y-6">
       <div>
-        <p className="eyebrow mb-2">DADOS DA REUNIÃO</p>
-        <h1>Nova ata – {nomeTipo}</h1>
-        <button type="button" className="mt-2 min-h-11 text-sm font-semibold text-blue-900 underline" onClick={() => setTipo(null)}>Trocar o tipo de ata</button>
+        <p className="eyebrow mb-2">REGISTRO DA REUNIÃO</p>
+        <h1>Nova ata</h1>
       </div>
-      {!cfg.apiKey.trim() && !cfg.groqApiKey.trim() && (
-        <div className="card border-amber-300 bg-amber-50 text-amber-900">
-          Falta a chave do Groq ou do Gemini. <Link to="/config" className="font-semibold underline">Colar em Configurações</Link>.
-        </div>
-      )}
-      {!cfg.escola.trim() && (
-        <div className="card border-amber-300 bg-amber-50 text-amber-900">
-          Falta o nome da escola. <Link to="/config" className="font-semibold underline">Preencher em Configurações</Link>.
-        </div>
-      )}
-
-      <fieldset className="space-y-3" disabled={gravando || salvando}>
-        <legend className="mb-3 font-document text-xl font-semibold">Como deseja registrar?</legend>
-        <div className="grid gap-3 sm:grid-cols-3">{([
-          ['audio', 'Gravar áudio', 'Grave agora ou envie um arquivo.'],
-          ['digitar', 'Digitar', 'Escreva o texto ou as anotações, mesmo sem internet.'],
-          ['audio_digitar', 'Gravar e digitar', 'Grave enquanto anota nomes, números e decisões.'],
-        ] as const).map(([modo, titulo, descricao]) => <label key={modo} className={`min-h-32 cursor-pointer rounded-xl border p-4 ${modoRegistro === modo ? 'border-blue-800 bg-blue-50' : 'border-rule bg-white'}`}>
-          <span className="flex items-center gap-3 font-semibold"><input type="radio" aria-label={titulo} name="modo-registro" value={modo} checked={modoRegistro === modo} onChange={() => setModoRegistro(modo)} />{titulo}</span>
-          <span className="mt-2 block text-sm text-slate-600">{descricao}</span>
-        </label>)}</div>
-      </fieldset>
-      <section className="card space-y-5">
-        <h2 className="font-semibold">{modoRegistro === 'digitar' ? 'Texto e anotações da reunião' : 'Registro da reunião'}</h2>
-        {modoRegistro !== 'digitar' && <Gravador compacto={modoRegistro === 'audio_digitar'} onTempo={setTempoMs} onAndamento={setGravando} arquivo={audio} onChange={(f, sessao) => { setAudio(f); setSessaoGravacao(sessao) }} />}
-        {modoRegistro !== 'audio' && <div className="space-y-4">
-          <p className="text-sm text-slate-600">{modoRegistro === 'digitar' ? 'Seu texto fica salvo automaticamente neste aparelho. Ao terminar, organize com IA ou use como está, sem IA.' : 'Registre nomes, números e decisões. As anotações têm prioridade sobre o áudio; divergências aparecerão para confirmar.'}</p>
-          {anotacoes.map((a, i) => <div key={i} className="space-y-2">
-            <label htmlFor={`anotacao-${i}`} className="label">{modoRegistro === 'digitar' ? 'Texto da reunião' : `Anotação ${i + 1}`}{a.tempo && <span className="ml-2 font-mono text-blue-900">[{a.tempo}]</span>}</label>
-            <textarea id={`anotacao-${i}`} className="field min-h-36" rows={modoRegistro === 'digitar' ? 12 : 4} value={a.texto} onChange={e => {
-              const texto = e.target.value
-              setAnotacoes(as => as.map((x, j) => j === i ? { ...x, texto, ...(modoRegistro === 'audio_digitar' && !x.tempo ? { tempo: `${String(Math.floor(tempoMs / 60000)).padStart(2, '0')}:${String(Math.floor(tempoMs / 1000) % 60).padStart(2, '0')}` } : {}) } : x))
-            }} />
-          </div>)}
-          {modoRegistro === 'audio_digitar' && <button type="button" className="btn-secondary w-full" onClick={() => setAnotacoes(as => [...as, { texto: '' }])}>＋ Adicionar anotação</button>}
-          <p className="text-sm text-slate-600" role="status">{salvoAutomatico ? 'Anotações salvas neste aparelho.' : 'As anotações são salvas automaticamente.'}</p>
-        </div>}
-      </section>
-
-      <section className="card space-y-5">
-        <h2 className="font-semibold">Dados da reunião</h2>
-        <div className="grid grid-cols-3 gap-3">
-          <div><label className="label" htmlFor="numero">Ata nº</label><input id="numero" className="field" type="number" min={1} value={numero} onChange={e => setNumero(Number(e.target.value))} /></div>
-          <div className="col-span-2"><label className="label" htmlFor="data">Data</label><input id="data" className="field" type="date" value={data} onChange={e => setData(e.target.value)} /></div>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div><label className="label" htmlFor="horaInicio">Início</label><input id="horaInicio" className="field" type="time" value={horaInicio} onChange={e => setHoraInicio(e.target.value)} /></div>
-          <div><label className="label" htmlFor="horaFim">Término (opcional)</label><input id="horaFim" className="field" type="time" value={horaFim} onChange={e => setHoraFim(e.target.value)} /></div>
-        </div>
-        <div><label className="label" htmlFor="local">Local</label><input id="local" className="field" value={local} onChange={e => setLocal(e.target.value)} /></div>
-        {!ehOrientacao && (
-          <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-rule bg-slate-50 p-3"><input type="checkbox" className="size-6 shrink-0" checked={ordinaria} onChange={e => setOrdinaria(e.target.checked)} /> Reunião ordinária</label>
+      <datalist id="nomes-cadastrados">
+        {nomes.map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
+      <datalist id="cargos-cadastrados">
+        {cargos.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
+      <section className="card space-y-4">
+        <TituloCartao titulo="Tipo de reunião" icone="tipo" />
+        <label className="sr-only" htmlFor="tipo-reuniao">
+          Tipo de reunião
+        </label>
+        <select
+          id="tipo-reuniao"
+          className="field"
+          value={opcao}
+          onChange={(e) => {
+            setOpcao(e.target.value)
+            if (tipoDaOpcao(e.target.value) === 'orientacao')
+              setAnonimizar(false)
+          }}
+        >
+          <option value="">Selecione o tipo de reunião</option>
+          {OPCOES_TIPO_REUNIAO.map((o) => (
+            <option key={o.rotulo}>{o.rotulo}</option>
+          ))}
+          <option>{OUTRO_TIPO_REUNIAO}</option>
+        </select>
+        {opcao === OUTRO_TIPO_REUNIAO && (
+          <div>
+            <label className="label" htmlFor="tipo-personalizado">
+              Digite o tipo de reunião
+            </label>
+            <input
+              id="tipo-personalizado"
+              className="field"
+              value={outro}
+              onChange={(e) => setOutro(e.target.value)}
+            />
+          </div>
         )}
       </section>
-
-      <section className="card space-y-5">
-        <h2 className="font-semibold">{ehOrientacao ? 'Quem orienta e quem lavra a ata' : 'Presidente e secretário(a)'}</h2>
-        {([[ehOrientacao ? 'Quem orienta' : 'Presidiu a reunião', presidente, setPresidente], ...(mesmaPessoa ? [] : [['Lavrou a ata', secretario, setSecretario]] as const)] as const).map(([rot, p, set]) => (
-          <div key={rot} className="grid gap-4 sm:grid-cols-2">
-            <div><label className="label" htmlFor={`${rot.split(' ')[0]}-nome`}>{rot}</label><input id={`${rot.split(' ')[0]}-nome`} className="field" value={p.nome} onChange={e => set({ ...p, nome: e.target.value })} placeholder="Nome" /></div>
-            <div><label className="label" htmlFor={`${rot.split(' ')[0]}-cargo`}>Cargo</label><input id={`${rot.split(' ')[0]}-cargo`} className="field" value={p.cargo} onChange={e => set({ ...p, cargo: e.target.value })} placeholder={ehOrientacao ? 'Diretora, Coordenadora, Pedagoga…' : undefined} /></div>
-          </div>
-        ))}
-        <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-rule bg-slate-50 p-3"><input type="checkbox" className="size-6 shrink-0" checked={mesmaPessoa} onChange={e => setMesmaPessoa(e.target.checked)} /> {ehOrientacao ? 'Quem orienta também lavrou a ata' : 'Quem presidiu também lavrou a ata'}</label>
-      </section>
-
-      {ehOrientacao && (
-        <section className="card space-y-5">
-          <h2 className="font-semibold">Quem recebe a orientação</h2>
-          <p className="text-sm text-slate-600">Pode ser mais de uma pessoa, funcionários e alunos juntos. Todos assinam.</p>
-          {orientados.map((o, n) => (
-            <div key={o.id} className={`person-card space-y-4 border-l-4 ${o.tipo === 'aluno' ? 'border-l-teal-700' : 'border-l-blue-900'}`}>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rule pb-3">
-                <p className={`person-badge ${o.tipo === 'aluno' ? 'bg-teal-100 text-teal-900' : 'bg-blue-100 text-blue-900'}`}><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{o.tipo === 'aluno' ? <><path d="m2 8 10-5 10 5-10 5zM6 10v7q6 5 12 0v-7M22 8v8" /></> : <><rect x="3" y="7" width="18" height="14" rx="2" /><path d="M8 7V3h8v4M3 12h18M10 12v3h4v-3" /></>}</svg>{n + 1}. {o.tipo === 'funcionario' ? 'Funcionário' : 'Aluno'}</p>
-                <button type="button" className="btn-danger" onClick={() => setOrientados(os => os.filter(x => x.id !== o.id))} aria-label={`Remover orientado ${n + 1}`}>Remover</button>
-              </div>
-              {o.tipo === 'funcionario' ? (
-                <>
-                  {cfg.pessoas.length > 0 && (
-                    <div>
-                      <label className="label" htmlFor={`orientado-cadastro-${o.id}`}>Escolher do cadastro</label>
-                      <select
-                        id={`orientado-cadastro-${o.id}`} className="field" value=""
-                        onChange={e => { const p = cfg.pessoas[Number(e.target.value)]; if (p) upOrient(o.id, { nome: p.nome, cargo: p.cargo }) }}
-                      >
-                        <option value="">Selecione…</option>
-                        {cfg.pessoas.map((p, i) => <option key={i} value={i}>{p.nome} — {p.cargo}</option>)}
-                      </select>
-                    </div>
-                  )}
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div><label className="label" htmlFor={`orientado-nome-${o.id}`}>Nome</label><input id={`orientado-nome-${o.id}`} className="field" autoFocus={o.foco} autoComplete="off" value={o.nome} onChange={e => upOrient(o.id, { nome: e.target.value })} /></div>
-                    <div><label className="label" htmlFor={`orientado-cargo-${o.id}`}>Cargo</label><input id={`orientado-cargo-${o.id}`} className="field" autoComplete="off" value={o.cargo} onChange={e => upOrient(o.id, { cargo: e.target.value })} placeholder="Professor(a), Inspetor(a)…" /></div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div><label className="label" htmlFor={`aluno-nome-${o.id}`}>Nome do aluno</label><input id={`aluno-nome-${o.id}`} className="field" autoFocus={o.foco} autoComplete="off" value={o.nome} onChange={e => upOrient(o.id, { nome: e.target.value })} /></div>
-                    <div><label className="label" htmlFor={`aluno-turma-${o.id}`}>Turma</label><input id={`aluno-turma-${o.id}`} className="field" autoComplete="off" value={o.turma} onChange={e => upOrient(o.id, { turma: e.target.value })} placeholder="5º ano B" /></div>
-                  </div>
-                  <div className="space-y-3 rounded-xl border border-teal-200 bg-white p-4">
-                    <p className="font-semibold">Responsável presente (opcional)</p>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div><label className="label" htmlFor={`acomp-nome-${o.id}`}>Nome</label><input id={`acomp-nome-${o.id}`} className="field" autoComplete="off" value={o.respNome} onChange={e => upOrient(o.id, { respNome: e.target.value })} /></div>
-                      <div><label className="label" htmlFor={`acomp-par-${o.id}`}>Parentesco</label><select id={`acomp-par-${o.id}`} className="field" value={o.respParentesco} onChange={e => upOrient(o.id, { respParentesco: e.target.value as Parentesco })}>{PARENTESCOS.map(x => <option key={x}>{x}</option>)}</select></div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
-          <div className="grid gap-2 sm:grid-cols-2">
-            <button type="button" className="btn-secondary" onClick={() => addOrient('funcionario')}>＋ Adicionar funcionário</button>
-            <button type="button" className="btn-secondary" onClick={() => addOrient('aluno')}>＋ Adicionar aluno</button>
-          </div>
-        </section>
-      )}
-
-      {!ehOrientacao && (
-        <section className="card space-y-5">
-          <h2 className="font-semibold">{tipo === 'pais' ? 'Funcionários' : 'Participantes'}</h2>
-          <p className="text-sm text-slate-600">Marque quem estava presente. Só os presentes assinam.</p>
-          {cfg.pessoas.length === 0 && (
-            <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-700">
-              Dica: cadastre os professores e funcionários uma vez em{' '}
-              <Link to="/config" className="font-semibold underline">Configurações</Link>{' '}
-              e eles já aparecem aqui. Quem você digitar abaixo também fica guardado para as próximas atas.
-            </p>
-          )}
-          {parts.map((p, i) => (
-            <div key={i} className={`flex flex-wrap items-center gap-3 rounded-xl border p-4 ${p.presente ? 'border-blue-200 bg-blue-50/50' : 'border-rule bg-slate-50'}`}>
-              <label className="flex min-h-12 w-full cursor-pointer items-center gap-3 rounded-lg font-semibold text-ink">
-                <input type="checkbox" className="size-6 shrink-0" checked={p.presente} onChange={e => upParte(i, { presente: e.target.checked })} />
-                Presente
-              </label>
-              <input className="field min-w-0 flex-1 basis-40" value={p.nome} onChange={e => upParte(i, { nome: e.target.value })} placeholder="Nome" aria-label="Nome" />
-              <input className="field min-w-0 flex-1 basis-32" value={p.cargo} onChange={e => upParte(i, { cargo: e.target.value })} placeholder="Cargo" aria-label="Cargo" />
-              <button type="button" className="btn-danger min-w-12 px-3" onClick={() => setParts(ps => ps.filter((_, j) => j !== i))} aria-label="Remover participante">✕</button>
-            </div>
-          ))}
-          <button type="button" className="btn-secondary w-full" onClick={() => setParts(ps => [...ps, { nome: '', cargo: 'Professor(a)', presente: true }])}>＋ Adicionar {tipo === 'pais' ? 'funcionário' : 'participante'}</button>
-        </section>
-      )}
-
-      {tipo === 'pedagogica' && (
-        <section className="card space-y-5">
-          <h2 className="font-semibold">Alunos (se participaram)</h2>
-          <p className="text-sm text-slate-600">Alunos são digitados a cada ata e não entram no cadastro.</p>
-          {alunos.map((a, i) => (
-            <div key={i} className="grid gap-3 rounded-xl border border-rule bg-slate-50 p-4 sm:grid-cols-[1fr_10rem_auto]">
-              <input className="field" autoFocus={a.foco} autoComplete="off" value={a.nome} onChange={e => upAluno(i, { nome: e.target.value })} placeholder="Nome do aluno" aria-label="Nome do aluno" />
-              <input className="field" autoComplete="off" value={a.turma} onChange={e => upAluno(i, { turma: e.target.value })} placeholder="Turma" aria-label="Turma" />
-              <button type="button" className="btn-danger" onClick={() => setAlunos(as => as.filter((_, j) => j !== i))} aria-label="Remover aluno">Remover</button>
-            </div>
-          ))}
-          <button type="button" className="btn-secondary w-full" onClick={() => setAlunos(as => [...as, { nome: '', turma: '', foco: true }])}>＋ Adicionar aluno</button>
-        </section>
-      )}
-
-      {tipo === 'pais' && (
-        <section className="card space-y-5">
-          <h2 className="font-semibold">Pais e responsáveis</h2>
-          <p className="text-sm text-slate-600">Digite quem compareceu. Eles não entram no cadastro de funcionários.</p>
-          {responsaveis.map((r, i) => (
-            <div key={i} className="person-card">
-              <h3 className="font-semibold text-ink">Responsável {i + 1}</h3>
-              <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
-                <label className="block min-w-0"><span className="label">Nome do responsável</span>
-                <input className="field" autoFocus={r.foco} autoComplete="off" value={r.nome} onChange={e => upResp(i, { nome: e.target.value })} placeholder="Nome do responsável" aria-label="Nome do responsável" />
-                </label>
-                <label className="block min-w-0"><span className="label">Parentesco</span>
-                <select className="field" value={r.parentesco} onChange={e => upResp(i, { parentesco: e.target.value as Parentesco })} aria-label="Parentesco">
-                  {PARENTESCOS.map(x => <option key={x}>{x}</option>)}
-                </select>
-                </label>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
-                <label className="block min-w-0"><span className="label">Nome do aluno</span>
-                <input className="field" autoComplete="off" value={r.aluno} onChange={e => upResp(i, { aluno: e.target.value })} placeholder="Nome do aluno" aria-label="Nome do aluno" />
-                </label>
-                <label className="block min-w-0"><span className="label">Tratamento do aluno</span>
-                <select className="field" value={r.tratamento ?? 'aluno(a)'} onChange={e => upResp(i, { tratamento: e.target.value as TratamentoAluno })}>
-                  <option value="aluno(a)">Aluno(a) — não informado</option>
-                  <option value="aluno">Aluno</option>
-                  <option value="aluna">Aluna</option>
-                </select>
-                </label>
-                <label className="block min-w-0"><span className="label">Turma</span>
-                <input className="field" autoComplete="off" value={r.turma} onChange={e => upResp(i, { turma: e.target.value })} placeholder="Turma" aria-label="Turma" />
-                </label>
-              </div>
-              <button type="button" className="btn-danger w-full" onClick={() => setResponsaveis(rs => rs.filter((_, j) => j !== i))}>Remover responsável</button>
-            </div>
-          ))}
-          <button type="button" className="btn-secondary w-full" onClick={() => setResponsaveis(rs => [...rs, { nome: '', parentesco: 'Mãe', aluno: '', turma: '', foco: true }])}>＋ Adicionar responsável</button>
-          {responsaveis.length > 0 && <p className="text-sm text-slate-600">{responsaveis.filter(r => r.nome.trim()).length} responsável(is) na lista.</p>}
-        </section>
-      )}
-
-      <section className="card space-y-5">
-        <h2 className="font-semibold">{ehOrientacao ? 'Motivo e assuntos da orientação' : 'Pauta'}</h2>
-        <AssuntosSugeridos
-          sugestoes={assuntosSugeridos(chavesDeAssuntos(tipo, ehOrientacao ? orientados.map(o => o.tipo) : []), cfg.assuntosExtras)}
-          pauta={pauta} onChange={setPauta}
+      <section className="card space-y-4 border-blue-200 bg-blue-50/70">
+        <TituloCartao
+          titulo="Quem fez a ata?"
+          descricao="Selecione o nome e o cargo do responsável pelo registro."
+          icone="pessoa"
         />
-        {pauta.map((x, i) => (
-          <div key={i} className="flex gap-2">
-            <input aria-label={ehOrientacao ? `Assunto ${i + 1}` : `Item ${i + 1} da pauta`} className="field" value={x} onChange={e => setPauta(ps => ps.map((y, j) => (j === i ? e.target.value : y)))} placeholder={ehOrientacao ? `Assunto ${i + 1}` : `Item ${i + 1}`} />
-            {pauta.length > 1 && <button type="button" className="btn-secondary px-3" onClick={() => setPauta(ps => ps.filter((_, j) => j !== i))} aria-label="Remover item">✕</button>}
+        <div>
+          <label className="label" htmlFor="responsavel-nome">
+            Nome do(a) responsável
+          </label>
+          <input
+            id="responsavel-nome"
+            className="field"
+            list="nomes-cadastrados"
+            placeholder="Selecione ou digite o nome"
+            value={responsavel.nome}
+            onChange={(e) => escolherNome(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="responsavel-cargo">
+            Cargo
+          </label>
+          <input
+            id="responsavel-cargo"
+            className="field"
+            list="cargos-cadastrados"
+            placeholder="Selecione ou digite o cargo"
+            value={responsavel.cargo}
+            onChange={(e) =>
+              setResponsavel((r) => ({ ...r, cargo: e.target.value }))
+            }
+          />
+        </div>
+        <button
+          type="button"
+          className="btn-secondary w-full bg-blue-100"
+          onClick={async () => {
+            setMensagem('')
+            setErro('')
+            if (!responsavel.nome.trim() && !responsavel.cargo.trim()) {
+              setErro('Digite um nome ou cargo para cadastrar.')
+              return
+            }
+            try {
+              await cadastrar([responsavel])
+              setMensagem('Nome ou cargo cadastrado para as próximas atas.')
+            } catch {
+              setErro('Não foi possível cadastrar. Tente novamente.')
+            }
+          }}
+        >
+          ＋ Cadastrar novo nome ou cargo
+        </button>
+        {mensagem && (
+          <p role="status" className="text-green-800">
+            {mensagem}
+          </p>
+        )}
+      </section>
+      <section className="card space-y-4">
+        <TituloCartao
+          titulo="Participantes da reunião"
+          descricao="Selecione os participantes ou adicione novos."
+          icone="grupo"
+        />
+        <button
+          type="button"
+          className="btn-secondary w-full"
+          onClick={() => setParticipantes((ps) => [...ps, pessoaVazia()])}
+        >
+          ＋ Adicionar participante
+        </button>
+        {!participantes.length && (
+          <p className="rounded-xl border border-rule bg-slate-50 p-5 text-center text-slate-500">
+            Nenhum participante adicionado.
+          </p>
+        )}
+        {participantes.map((p, i) => (
+          <div
+            key={p.id}
+            className="person-card space-y-3"
+            role="group"
+            aria-label={`Participante ${i + 1}`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-semibold">Participante {i + 1}</h3>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={() =>
+                  setParticipantes((ps) => ps.filter((x) => x.id !== p.id))
+                }
+                aria-label={`Excluir participante ${i + 1}`}
+              >
+                Excluir
+              </button>
+            </div>
+            <label className="block">
+              <span className="label">Nome</span>
+              <input
+                className="field"
+                list="nomes-cadastrados"
+                aria-label={`Nome do participante ${i + 1}`}
+                value={p.nome}
+                onChange={(e) => {
+                  const conhecido = cfg.pessoas.find(
+                    (x) => x.nome === e.target.value,
+                  )
+                  atualizar(p.id, {
+                    nome: e.target.value,
+                    ...(conhecido ? { cargo: conhecido.cargo } : {}),
+                  })
+                }}
+              />
+            </label>
+            <label className="block">
+              <span className="label">Cargo ou função (opcional)</span>
+              <input
+                className="field"
+                list="cargos-cadastrados"
+                aria-label={`Cargo do participante ${i + 1}`}
+                value={p.cargo}
+                onChange={(e) => atualizar(p.id, { cargo: e.target.value })}
+              />
+            </label>
+            {categoria(p.cargo) === 'responsavel' && (
+              <>
+                <label className="block">
+                  <span className="label">Aluno (opcional)</span>
+                  <input
+                    className="field"
+                    aria-label={`Aluno do responsável ${i + 1}`}
+                    value={p.aluno}
+                    onChange={(e) => atualizar(p.id, { aluno: e.target.value })}
+                  />
+                </label>
+                <label className="block">
+                  <span className="label">Tratamento do aluno</span>
+                  <select
+                    className="field"
+                    aria-label={`Tratamento do aluno ${i + 1}`}
+                    value={p.tratamento}
+                    onChange={(e) =>
+                      atualizar(p.id, {
+                        tratamento: e.target.value as TratamentoAluno,
+                      })
+                    }
+                  >
+                    <option value="aluno(a)">Aluno(a) — não informado</option>
+                    <option value="aluno">Aluno</option>
+                    <option value="aluna">Aluna</option>
+                  </select>
+                </label>
+              </>
+            )}
+            {categoria(p.cargo) !== 'funcionario' && (
+              <label className="block">
+                <span className="label">Turma (opcional)</span>
+                <input
+                  className="field"
+                  aria-label={`Turma do participante ${i + 1}`}
+                  value={p.turma}
+                  onChange={(e) => atualizar(p.id, { turma: e.target.value })}
+                />
+              </label>
+            )}
+            {tipo === 'orientacao' && (
+              <label className="flex min-h-12 items-center gap-3">
+                <input
+                  type="checkbox"
+                  className="size-6"
+                  checked={p.recebeOrientacao}
+                  onChange={(e) =>
+                    atualizar(p.id, { recebeOrientacao: e.target.checked })
+                  }
+                />
+                Recebe a orientação
+              </label>
+            )}
           </div>
         ))}
-        <button type="button" className="btn-secondary w-full" onClick={() => setPauta(ps => [...ps, ''])}>＋ Adicionar {ehOrientacao ? 'assunto' : 'item'}</button>
       </section>
-
-      <section className="card space-y-5">
-        <h2 className="font-semibold">Outras opções</h2>
-        <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-rule bg-slate-50 p-3"><input type="checkbox" className="size-6 shrink-0" checked={anonimizar} onChange={e => setAnonimizar(e.target.checked)} /> Não citar nomes de alunos (usar iniciais)</label>
-        <div><label className="label" htmlFor="glossario">Glossário (um termo por linha: siglas, nomes próprios)</label><textarea id="glossario" className="field" rows={3} value={glossario} onChange={e => setGlossario(e.target.value)} /></div>
+      <section className="card space-y-4">
+        <h2>Dados da reunião</h2>
+        <div className="grid grid-cols-3 gap-3">
+          <label>
+            <span className="label">Ata nº</span>
+            <input
+              className="field"
+              type="number"
+              min={1}
+              value={numero}
+              onChange={(e) => setNumero(Number(e.target.value))}
+            />
+          </label>
+          <label className="col-span-2">
+            <span className="label">Data</span>
+            <input
+              className="field"
+              type="date"
+              value={data}
+              onChange={(e) => setData(e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label>
+            <span className="label">Início</span>
+            <input
+              className="field"
+              type="time"
+              value={horaInicio}
+              onChange={(e) => setHoraInicio(e.target.value)}
+            />
+          </label>
+          <label>
+            <span className="label">Término (opcional)</span>
+            <input
+              className="field"
+              type="time"
+              value={horaFim}
+              onChange={(e) => setHoraFim(e.target.value)}
+            />
+          </label>
+        </div>
+        <label className="block">
+          <span className="label">Local</span>
+          <input
+            className="field"
+            value={local}
+            onChange={(e) => setLocal(e.target.value)}
+          />
+        </label>
       </section>
-
-      {erro && <div role="alert" className="card border-red-300 bg-red-50 text-red-800">{erro}</div>}
-      <div className="action-bar"><div className="mx-auto grid max-w-3xl gap-2 sm:px-8">
-        {modoRegistro === 'digitar' ? <><button type="submit" value="organizar" className="btn-primary w-full" disabled={salvando || (!cfg.apiKey.trim() && !cfg.groqApiKey.trim())}>Organizar com IA</button><button type="submit" value="usar" className="btn-secondary w-full" disabled={salvando}>Usar como está</button></> : <button type="submit" className="btn-primary w-full" disabled={salvando || gravando}>{salvando ? 'Salvando…' : 'Transcrever o áudio'}</button>}
-      </div></div>
+      {!cfg.apiKey.trim() && !cfg.groqApiKey.trim() && (
+        <p className="card border-amber-300 bg-amber-50 text-amber-900">
+          Para usar IA, cadastre uma chave em{' '}
+          <Link to="/config" className="underline">
+            Configurações
+          </Link>
+          . Digitar e usar como está funciona sem chave.
+        </p>
+      )}
+      <RegistroReuniao
+        modoRegistro={modoRegistro}
+        setModoRegistro={setModoRegistro}
+        anotacoes={anotacoes}
+        setAnotacoes={setAnotacoes}
+        audio={audio}
+        onAudio={(f, s) => {
+          setAudio(f)
+          setSessao(s)
+        }}
+        tempoMs={tempoMs}
+        setTempoMs={setTempoMs}
+        gravando={gravando}
+        setGravando={setGravando}
+        salvando={salvando}
+        salvoAutomatico={salvoAutomatico}
+      />
+      <section className="card space-y-4">
+        <h2>{tipo === 'orientacao' ? 'Assuntos da orientação' : 'Pauta'}</h2>
+        <AssuntosSugeridos
+          sugestoes={assuntosSugeridos(
+            chavesDeAssuntos(
+              tipo,
+              meta.participantes
+                .filter((p) => p.recebeOrientacao)
+                .map((p) => p.categoria ?? 'funcionario'),
+            ),
+            cfg.assuntosExtras,
+          )}
+          pauta={pauta}
+          onChange={setPauta}
+        />
+        {pauta.map((p, i) => (
+          <div key={i} className="flex gap-2">
+            <input
+              className="field"
+              aria-label={`Item ${i + 1} da pauta`}
+              value={p}
+              onChange={(e) =>
+                setPauta((ps) =>
+                  ps.map((x, j) => (j === i ? e.target.value : x)),
+                )
+              }
+            />
+            {pauta.length > 1 && (
+              <button
+                type="button"
+                className="btn-secondary"
+                aria-label={`Excluir item ${i + 1}`}
+                onClick={() => setPauta((ps) => ps.filter((_, j) => j !== i))}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          type="button"
+          className="btn-secondary w-full"
+          onClick={() => setPauta((ps) => [...ps, ''])}
+        >
+          ＋ Adicionar item
+        </button>
+      </section>
+      <section className="card space-y-4">
+        <h2>Outras opções</h2>
+        <label className="flex min-h-12 items-center gap-3">
+          <input
+            className="size-6 shrink-0"
+            type="checkbox"
+            checked={anonimizar}
+            onChange={(e) => setAnonimizar(e.target.checked)}
+          />
+          Não citar nomes de alunos (usar iniciais)
+        </label>
+        <label className="block">
+          <span className="label">Glossário (um termo por linha)</span>
+          <textarea
+            className="field"
+            rows={3}
+            value={glossario}
+            onChange={(e) => setGlossario(e.target.value)}
+          />
+        </label>
+      </section>
+      {erro && (
+        <p role="alert" className="card border-red-300 bg-red-50 text-red-800">
+          {erro}
+        </p>
+      )}
+      {modoRegistro === 'digitar' && (
+        <section id="opcoes-texto" tabIndex={-1} className="card space-y-3">
+          <h2>Como preparar a ata?</h2>
+          <p className="text-sm text-slate-600">
+            Organize suas anotações com IA ou mantenha seu texto, com a abertura
+            e o encerramento da escola.
+          </p>
+          <button
+            type="submit"
+            value="organizar"
+            className="btn-primary w-full"
+            disabled={
+              salvando || (!cfg.apiKey.trim() && !cfg.groqApiKey.trim())
+            }
+          >
+            Organizar com IA
+          </button>
+          <button
+            type="submit"
+            value="usar"
+            className="btn-secondary w-full"
+            disabled={salvando}
+          >
+            Usar como está
+          </button>
+        </section>
+      )}
+      <div className="action-bar">
+        <div className="mx-auto max-w-3xl sm:px-8">
+          {modoRegistro === 'digitar' ? (
+            <button
+              type="button"
+              className="btn-primary w-full"
+              onClick={() => {
+                const opcoes = document.getElementById('opcoes-texto')
+                opcoes?.scrollIntoView({ block: 'center' })
+                opcoes?.focus()
+              }}
+            >
+              Continuar
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="btn-primary w-full"
+              disabled={salvando || gravando}
+            >
+              {salvando ? 'Salvando…' : 'Transcrever o áudio'}
+            </button>
+          )}
+        </div>
+      </div>
     </form>
   )
 }

@@ -166,3 +166,13 @@ it('inclui logo personalizada no backup e só a substitui quando autorizar confi
 it.each(['https://exemplo.invalid/logo.png', 'data:image/svg+xml,<svg/>', `data:image/png;base64,${'A'.repeat(1_500_000)}`])('recusa logo externa, SVG não rasterizado ou imagem excessiva no backup', logoEscola => {
   expect(() => validarBackup({ ...backup(), configuracoes: { logoEscola } })).toThrow(/logo da escola/)
 })
+
+it('preserva no backup o cadastro novo sem criar campos legados', async()=>{
+  const nova={...ata(),meta:{...meta,responsavel:{nome:'Maria',cargo:''},tipoReuniao:'Conselho de classe',presidente:undefined,secretario:undefined,ordinaria:undefined}}
+  await db.atas.put(nova)
+  await saveSettings({...SETTINGS_PADRAO,cargosExtras:['Gestora escolar']})
+  const b=await criarBackup()
+  expect(b.atas[0].meta).not.toHaveProperty('ordinaria')
+  expect(b.atas[0].meta.responsavel).toEqual({nome:'Maria',cargo:''})
+  expect(b.configuracoes.cargosExtras).toEqual(['Gestora escolar'])
+})

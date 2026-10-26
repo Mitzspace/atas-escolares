@@ -119,8 +119,8 @@ export default function Configuracoes() {
       </section>
 
       <section className="card space-y-3">
-        <h2 className="font-semibold">Professores e funcionários</h2>
-        <p className="text-sm text-slate-600">Aparecem já na lista de participantes de cada nova ata.</p>
+        <h2 className="font-semibold">Nomes e cargos cadastrados</h2>
+        <p className="text-sm text-slate-600">Aparecem como sugestões para escolher ou digitar em cada nova ata. Os participantes são adicionados por você.</p>
         {s.pessoas.map((p, i) => (
           <div key={i} className="grid grid-cols-[1fr_auto] gap-3 rounded-xl border border-rule bg-slate-50 p-3 sm:grid-cols-[1fr_1fr_auto]">
             <input className="field" aria-label={`Nome da pessoa ${i + 1}`} value={p.nome} placeholder="Nome" onChange={e => up({ pessoas: s.pessoas.map((x, j) => (j === i ? { ...x, nome: e.target.value } : x)) })} />
