@@ -43,5 +43,6 @@ export {
   regrasDoModo,
   linhasAnotacoes,
   extrairResumo,
+  incorporarAnotacoes,
 } from './registro';
 export { renderAtaTextoLivre } from './render';

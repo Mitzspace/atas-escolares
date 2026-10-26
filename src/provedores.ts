@@ -1,5 +1,5 @@
 import {
-  aplicarFalantes, buildFalantesPrompt, ehFalanteGenerico, falantesResponseSchema, nomesParaFalantes,
+  aplicarFalantes, buildFalantesPrompt, ehFalanteGenerico, falantesResponseSchema, incorporarAnotacoes, nomesParaFalantes,
   type Anotacao, type AtaExtraida, type AtribuicaoFalante, type MeetingMetadata, type Participante, type TranscriptSegment,
 } from './ata-api'
 import { estimarTokens } from './groq-limites'
@@ -69,7 +69,14 @@ export const transcreverComProvedores = (opts: OpcoesTranscricao) => {
     ? { ...opts, settings: { ...opts.settings, provedorTranscricaoPreferido: 'gemini' as const } } : opts
   return comReserva(configuracao, provedor => provedor.transcrever(configuracao), configuracao.settings.provedorTranscricaoPreferido ?? 'groq')
 }
-export const redigirComProvedores = (opts: OpcoesRedacao) => comReserva(opts, provedor => provedor.redigir(opts), opts.settings.provedorRedacaoPreferido ?? 'gemini')
+/**
+ * Redige com reserva entre provedores. Com anotações, confere por código que todas entraram no corpo
+ * (`incorporarAnotacoes`): modelo menor pode ignorá-las, e nenhuma anotação pode se perder.
+ */
+export const redigirComProvedores = async (opts: OpcoesRedacao) => {
+  const r = await comReserva(opts, provedor => provedor.redigir(opts), opts.settings.provedorRedacaoPreferido ?? 'gemini')
+  return opts.anotacoes?.length ? { ...r, dados: incorporarAnotacoes(r.dados, opts.anotacoes).extraida } : r
+}
 
 // ------------------------------------------------------------------ registro com anotações
 

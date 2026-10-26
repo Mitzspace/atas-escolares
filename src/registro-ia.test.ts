@@ -98,3 +98,15 @@ it('usarTextoComoEsta: renderiza sem IA e grava resumo', async () => {
   expect(gerarAta).not.toHaveBeenCalled()
   await expect(usarTextoComoEsta('a', '  ')).rejects.toThrow()
 })
+
+it('Gravar e digitar: modelo que ignora as anotações não as perde (incorporadas por código)', async () => {
+  const ignorou: AtaExtraida = { itens: [{ pauta: 1, relato: 'No primeiro item da pauta, [PENDENTE: item não registrado na transcrição].' }], deliberacoes: [], encaminhamentos: [], pendencias: [] }
+  const notas = [{ texto: 'Prova de Matemática dia 10', tempo: '00:01' }, { texto: 'Carlos Mendes ficou responsável pelo cartaz', tempo: '00:03' }]
+  vi.mocked(getAta).mockResolvedValue(ata({ transcript: segs, anotacoes: notas } as Partial<AtaRecord>))
+  vi.mocked(gerarAta).mockResolvedValue({ extraida: ignorou, modeloUsado: 'gemini-3.5-flash-lite' })
+  await rodarGeracaoAta('a', vi.fn())
+  const patch = vi.mocked(patchAta).mock.calls.at(-1)![1] as Record<string, any>
+  expect(patch.renderizada.texto).toContain('Carlos Mendes ficou responsável pelo cartaz')
+  expect(patch.renderizada.texto).toMatch(/matemática dia dez/i)
+  expect(patch.extraida.pendencias.filter((p: string) => p.startsWith('conferir anotação incorporada'))).toHaveLength(2)
+})

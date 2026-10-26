@@ -1,6 +1,7 @@
 // Registro da reunião (modos Digitar e Gravar e digitar), identificação de falantes e resumo.
 // Só tipos, prompts, schemas e funções puras: sem UI, Gemini ou DB.
 import type { AtaExtraida, MeetingMetadata, Participante, TranscriptSegment } from './types';
+import { textoLivreParaPadrao } from './numeros';
 import { listarOrientados } from './types';
 
 /** Anotação digitada pela usuária. `tempo` = MM:SS da gravação, quando houve gravação simultânea. */
@@ -46,12 +47,22 @@ const REGRAS_AUDIO_E_NOTAS =
   'Quando transcrição e anotações divergirem em nome, número, data ou decisão, adote a versão das anotações e registre [confirmar: descrição da divergência] no texto e em "pendencias". ' + REGRAS_NOTAS_COMUNS;
 
 export function regrasDoModo(modo: ModoRegistro): string {
-  return modo === 'digitar' ? REGRAS_SO_NOTAS : modo === 'audio_digitar' ? REGRAS_AUDIO_E_NOTAS : '';
+  const base = modo === 'digitar' ? REGRAS_SO_NOTAS : modo === 'audio_digitar' ? REGRAS_AUDIO_E_NOTAS : '';
+  return base ? `${base}\n\n${COBERTURA_ANOTACOES}` : '';
 }
 
+/** Anotações numeradas ("Anotação 2 [00:03]: ..."): o número deixa a regra de cobertura verificável pelo modelo. */
 export function linhasAnotacoes(anotacoes: Anotacao[]): string[] {
-  return anotacoesValidas(anotacoes).map((a) => `${a.tempo?.trim() ? `[${a.tempo.trim()}] ` : '- '}${limpar(a.texto.replace(/\r?\n+/g, ' / '))}`);
+  return anotacoesValidas(anotacoes).map(
+    (a, i) => `Anotação ${i + 1}${a.tempo?.trim() ? ` [${a.tempo.trim()}]` : ''}: ${limpar(a.texto.replace(/\r?\n+/g, ' / '))}`,
+  );
 }
+
+const COBERTURA_ANOTACOES =
+  'COBERTURA DAS ANOTAÇÕES (obrigatória): as anotações vêm numeradas. CADA anotação deve aparecer no corpo — no relato do item da pauta a que se refere ' +
+  '(ou em pauta 0 se não couber), em "deliberacoes" ou em "encaminhamentos" — com os mesmos nomes, números, datas e decisões. ' +
+  'Se não souber onde encaixar ou houver dúvida, escreva-a mesmo assim e acrescente [confirmar: Anotação N]. ' +
+  'Nunca omita uma anotação nem deixe um item da pauta como não registrado quando alguma anotação o tratar. Antes de responder, confira que as anotações 1 a N estão todas contempladas.';
 
 // ---------------------------------------------------------------- falantes
 
@@ -203,3 +214,77 @@ export function extrairResumo(fonte: AtaExtraida | string, meta?: Pick<MeetingMe
   }
   return { assuntos: unicos(assuntos), decisoes: unicos(decisoes), encaminhamentos: unicos(encaminhamentos) };
 }
+
+// ---------------------------------------------------------------- garantia de cobertura das anotações
+
+const STOP = new Set(
+  ('a o as os um uma uns umas de da do das dos em no na nos nas ao aos para por com sem sobre que se e ou mas foi ser ter tem tinha ficou ficaram '
+    + 'dia dias isso esse essa este esta tambem ainda ja mais muito pelo pela pelos pelas entre ate como quando').split(' '),
+);
+const radical = (w: string) => w.slice(0, 5);
+
+/** Radicais das palavras que carregam conteúdo (nomes, números por extenso, verbos, substantivos). */
+function radicais(texto: string): string[] {
+  const t = norm(textoLivreParaPadrao(texto, false));
+  return [...new Set(t.split(' ').filter((w) => w.length >= 3 && !STOP.has(w)).map(radical))];
+}
+
+function textoDoCorpo(e: AtaExtraida): string {
+  return [
+    ...e.itens.map((i) => i.relato),
+    ...e.deliberacoes.flatMap((d) => [d.texto, d.votacao ?? '']),
+    ...e.encaminhamentos.flatMap((x) => [x.acao, x.responsavel ?? '', x.prazo ?? '']),
+    ...(e.manifestacoes ?? []),
+    ...(e.orientacoes ?? []),
+  ].join(' ');
+}
+
+const COBERTURA_MINIMA = 0.6;
+const unidades = (texto: string) => frases(texto).map(semPonto).filter((f) => limpar(f));
+
+/**
+ * Garante por código que nenhuma anotação se perca. Para cada frase de cada anotação, confere se o conteúdo essencial
+ * (radicais de nomes, números por extenso e palavras de conteúdo) aparece no corpo redigido; as que faltam entram no
+ * relato do item da pauta com mais palavras em comum, ou num trecho "Conforme anotações registradas durante a reunião, ..."
+ * em pauta 0, e viram a pendência "conferir anotação incorporada: ...". Pura: devolve uma cópia.
+ */
+export function incorporarAnotacoes(extraida: AtaExtraida, anotacoes: Anotacao[] = []): { extraida: AtaExtraida; incorporadas: string[] } {
+  const notas = anotacoesValidas(anotacoes);
+  if (!notas.length) return { extraida, incorporadas: [] };
+  const corpo = new Set(radicais(textoDoCorpo(extraida)));
+  const faltando: string[] = [];
+  for (const n of notas) {
+    for (const u of unidades(n.texto)) {
+      const rs = radicais(u);
+      if (!rs.length) continue;
+      const achados = rs.filter((r) => corpo.has(r)).length;
+      if (achados / rs.length < COBERTURA_MINIMA) faltando.push(u);
+    }
+  }
+  if (!faltando.length) return { extraida, incorporadas: [] };
+
+  const itens = extraida.itens.map((i) => ({ ...i }));
+  const soltas: string[] = [];
+  for (const u of faltando) {
+    const rs = new Set(radicais(u));
+    let melhor = -1;
+    let pontos = 0;
+    itens.forEach((it, idx) => {
+      if (it.pauta < 1) return;
+      const p = radicais(it.relato).filter((r) => rs.has(r)).length;
+      if (p > pontos) { pontos = p; melhor = idx; }
+    });
+    if (melhor >= 0) itens[melhor].relato = `${itens[melhor].relato.replace(/\s+$/, '')}${/[.!?]$/.test(itens[melhor].relato.trim()) ? '' : '.'} Conforme anotação registrada durante a reunião, ${minuscula1(u)}.`;
+    else soltas.push(u);
+  }
+  if (soltas.length) {
+    const txt = `Conforme anotações registradas durante a reunião, ${soltas.map(minuscula1).join('; ')}.`;
+    const geral = itens.find((i) => i.pauta === 0);
+    if (geral) geral.relato = `${geral.relato.replace(/\s+$/, '')} ${txt}`;
+    else itens.push({ pauta: 0, relato: txt });
+  }
+  const pendencias = [...extraida.pendencias, ...faltando.map((u) => `conferir anotação incorporada: ${resumida(u, 80)}`)];
+  return { extraida: { ...extraida, itens, pendencias }, incorporadas: faltando };
+}
+
+const minuscula1 = (s: string) => (/^[A-ZÀ-Ý][a-zà-ÿ]/.test(s) && !/^[A-ZÀ-Ý][a-zà-ÿ]+\s+[A-ZÀ-Ý]/.test(s) ? s.charAt(0).toLocaleLowerCase('pt-BR') + s.slice(1) : s);

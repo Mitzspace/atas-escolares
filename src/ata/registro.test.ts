@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  aplicarFalantes, buildAtaPrompt, extrairResumo, FALANTE_NAO_IDENTIFICADO, modoDe, nomesParaFalantes, renderAta,
+  aplicarFalantes, buildAtaPrompt, extrairResumo, incorporarAnotacoes, FALANTE_NAO_IDENTIFICADO, modoDe, nomesParaFalantes, renderAta,
   renderAtaTextoLivre, validateAta, type AtaExtraida, type MeetingMetadata, type TranscriptSegment,
 } from '../ata-api'
 
@@ -50,7 +50,7 @@ describe('modo e prompt com anotações', () => {
   it('modo digitar: sem seção de transcrição, com anotações e regra de não inventar', () => {
     const p = buildAtaPrompt(meta, [], notas)
     expect(p.userPrompt).not.toContain('TRANSCRIÇÃO')
-    expect(p.userPrompt).toContain('[12:35] Provas dia 10/11')
+    expect(p.userPrompt).toContain('Anotação 1 [12:35]: Provas dia 10/11')
     expect(p.systemInstruction).toContain('NUNCA invente')
   })
   it('modo gravar e digitar: prioridade das anotações e [confirmar:]', () => {
@@ -117,5 +117,51 @@ describe('extrairResumo', () => {
   })
   it('vazio', () => {
     expect(extrairResumo('')).toEqual({ assuntos: [], decisoes: [], encaminhamentos: [] })
+  })
+})
+
+describe('prompt de cobertura e incorporarAnotacoes', () => {
+  const notas = [
+    { texto: 'Prova de Matemática dia 10 de novembro', tempo: '00:01' },
+    { texto: 'Carlos Mendes ficou responsável pelo cartaz', tempo: '00:03' },
+    { texto: 'Reforço escolar começa terça-feira', tempo: '00:04' },
+  ]
+  const vazia: AtaExtraida = {
+    itens: [{ pauta: 1, relato: 'No primeiro item da pauta, [PENDENTE: item não registrado na transcrição].' }],
+    deliberacoes: [], encaminhamentos: [], pendencias: ['item não registrado'],
+  }
+  it('prompt numera as anotações e exige cobertura de cada uma', () => {
+    const p = buildAtaPrompt(meta, [seg('Falante 1', 'bom dia')], notas)
+    expect(p.userPrompt).toContain('Anotação 3 [00:04]: Reforço escolar começa terça-feira')
+    expect(p.systemInstruction).toContain('CADA anotação deve aparecer')
+    expect(p.systemInstruction).toContain('[confirmar: Anotação N]')
+  })
+  it('resposta que ignora as anotações recebe todas, por código, com pendência', () => {
+    const { extraida, incorporadas } = incorporarAnotacoes(vazia, notas)
+    expect(incorporadas).toHaveLength(3)
+    const texto = renderAta(meta, extraida).texto
+    expect(texto).toContain('Conforme anotações registradas durante a reunião')
+    expect(texto).toMatch(/matemática dia dez de novembro/i)
+    expect(texto).toContain('Carlos Mendes ficou responsável pelo cartaz')
+    expect(extraida.pendencias.filter(p => p.startsWith('conferir anotação incorporada'))).toHaveLength(3)
+    expect(vazia.itens).toHaveLength(1)
+  })
+  it('anotação que casa com um item da pauta entra no relato desse item', () => {
+    const e: AtaExtraida = { ...vazia, itens: [{ pauta: 2, relato: 'Tratou-se do reforço escolar para os alunos.' }, { pauta: 1, relato: 'Avaliação.' }] }
+    const r = incorporarAnotacoes(e, [{ texto: 'Reforço escolar começa terça-feira dia 12' }]).extraida
+    expect(r.itens.find(i => i.pauta === 2)!.relato).toContain('Conforme anotação registrada durante a reunião, reforço escolar começa terça-feira dia 12.')
+    expect(r.itens.some(i => i.pauta === 0)).toBe(false)
+  })
+  it('o que já está no corpo (mesmo com número por extenso) não é repetido', () => {
+    const e: AtaExtraida = {
+      itens: [{ pauta: 1, relato: 'A prova de Matemática foi marcada para o dia dez de novembro e Carlos Mendes ficou responsável pelo cartaz.' }],
+      deliberacoes: [], encaminhamentos: [{ acao: 'Iniciar o reforço escolar na terça-feira' }], pendencias: [],
+    }
+    const r = incorporarAnotacoes(e, notas)
+    expect(r.incorporadas).toEqual([])
+    expect(r.extraida).toBe(e)
+  })
+  it('sem anotações devolve o mesmo objeto', () => {
+    expect(incorporarAnotacoes(vazia, []).extraida).toBe(vazia)
   })
 })
